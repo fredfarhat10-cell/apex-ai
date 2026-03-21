@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  /* Core */
+  --gains-deep: #0A1628;
+  --gains-forest: #1B4332;
+  --gains-sage: #40916C;
+  --gains-cream: #FDFBF7;
+  --gains-warm: #F5F1EB;
+
+  /* Supporting */
+  --gains-gold: #C9A962;
+  --gains-slate: #64748B;
+  --gains-mist: #E8E4DE;
+
+  /* Functional */
+  --gains-success: #2D6A4F;
+  --gains-error: #9B2C2C;
+
+  /* Typography Scale */
+  --text-display: clamp(3rem, 6vw, 5rem);
+  --text-h1: clamp(2.25rem, 4vw, 3.5rem);
+  --text-h2: clamp(1.75rem, 3vw, 2.5rem);
+  --text-h3: clamp(1.25rem, 2vw, 1.75rem);
+  --text-body: clamp(1rem, 1.125vw, 1.125rem);
+  --text-small: 0.875rem;
+
+  /* Spacing */
+  --space-section: clamp(6rem, 12vw, 10rem);
+  --space-block: clamp(3rem, 6vw, 5rem);
+  --space-element: clamp(1.5rem, 3vw, 2.5rem);
+  --container-max: 1280px;
+  --container-padding: clamp(1.5rem, 5vw, 4rem);
+
+  /* Fonts — Playfair Display & DM Sans loaded via Google Fonts link, with graceful fallbacks */
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+@theme inline {
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+
+  --color-deep: var(--gains-deep);
+  --color-forest: var(--gains-forest);
+  --color-sage: var(--gains-sage);
+  --color-cream: var(--gains-cream);
+  --color-warm: var(--gains-warm);
+  --color-gold: var(--gains-gold);
+  --color-slate: var(--gains-slate);
+  --color-mist: var(--gains-mist);
+  --color-success: var(--gains-success);
+  --color-error: var(--gains-error);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--gains-cream);
+  color: var(--gains-deep);
+  font-size: var(--text-body);
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+p {
+  max-width: 65ch;
+}
+
+::selection {
+  background-color: var(--gains-sage);
+  color: white;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gains-sage);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
