@@ -4,17 +4,14 @@ import { useState, useEffect } from "react"
 import { useMomentumStore } from "@/lib/momentum-store"
 import { motion, AnimatePresence } from "framer-motion"
 import { Home, Trophy, Users, BarChart3, MessageCircle } from "lucide-react"
-import dynamic from "next/dynamic"
-
-// Dynamic imports to prevent SSR issues
-const MomentumOnboarding = dynamic(() => import("@/components/momentum/onboarding"), { ssr: false })
-const MomentumHomeDashboard = dynamic(() => import("@/components/momentum/home-dashboard"), { ssr: false })
-const HabitVerification = dynamic(() => import("@/components/momentum/habit-verification"), { ssr: false })
-const ChallengeDetail = dynamic(() => import("@/components/momentum/challenge-detail"), { ssr: false })
-const ComebackEngine = dynamic(() => import("@/components/momentum/comeback-engine"), { ssr: false })
-const PodScreen = dynamic(() => import("@/components/momentum/pod-screen"), { ssr: false })
-const StatsScreen = dynamic(() => import("@/components/momentum/stats-screen"), { ssr: false })
-const CoachChat = dynamic(() => import("@/components/momentum/coach-chat"), { ssr: false })
+import MomentumOnboarding from "@/components/momentum/onboarding"
+import MomentumHomeDashboard from "@/components/momentum/home-dashboard"
+import HabitVerification from "@/components/momentum/habit-verification"
+import ChallengeDetail from "@/components/momentum/challenge-detail"
+import ComebackEngine from "@/components/momentum/comeback-engine"
+import PodScreen from "@/components/momentum/pod-screen"
+import StatsScreen from "@/components/momentum/stats-screen"
+import CoachChat from "@/components/momentum/coach-chat"
 
 const tabs = [
   { id: "home", label: "Home", icon: Home },
@@ -26,13 +23,21 @@ const tabs = [
 
 export default function MomentumPage() {
   const { user, activeTab, setActiveTab, verifyingHabitId, comebackActive } = useMomentumStore()
-  const [mounted, setMounted] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
+    // Wait for Zustand persist hydration
+    const unsub = useMomentumStore.persist.onFinishHydration(() => {
+      setHydrated(true)
+    })
+    // If already hydrated (e.g. no persisted data)
+    if (useMomentumStore.persist.hasHydrated()) {
+      setHydrated(true)
+    }
+    return () => { unsub() }
   }, [])
 
-  if (!mounted) {
+  if (!hydrated) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#0B1120]">
         <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
