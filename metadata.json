@@ -1,0 +1,5 @@
+{
+  "name": "Apex AI Assistant",
+  "description": "A personalized, proactive, zero-knowledge AI assistant designed to be a cognitive co-pilot for your life. All data is encrypted and stored locally on your device.",
+  "requestFramePermissions": []
+}

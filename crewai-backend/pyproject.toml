@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "apex-ai-hierarchical-life-companion"
+version = "0.1.0"
+description = "Apex AI Financial Intelligence Crew for generating Alpha Briefs"
+authors = ["Apex AI Team"]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<=3.13"
+crewai = {extras = ["tools"], version = "^0.86.0"}
+langchain-openai = "^0.2.14"
+python-dotenv = "^1.0.0"
+google-api-python-client = "^2.108.0"
+google-auth-httplib2 = "^0.2.0"
+google-auth-oauthlib = "^1.2.0"
+apscheduler = "^3.10.4"
+flask = "^3.0.0"
+flask-cors = "^4.0.0"
+
+[tool.poetry.scripts]
+apex_ai_hierarchical_life_companion = "apex_ai_hierarchical_life_companion.main:run"
+train = "apex_ai_hierarchical_life_companion.main:train"
+replay = "apex_ai_hierarchical_life_companion.main:replay"
+test = "apex_ai_hierarchical_life_companion.main:test"
+scheduler = "apex_ai_hierarchical_life_companion.scheduler:start_scheduler"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

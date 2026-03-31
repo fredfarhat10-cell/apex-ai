@@ -1,0 +1,138 @@
+# Apex AI CrewAI Tasks Configuration
+# Defines the high-value tasks that agents execute
+
+execute_precognitive_action:
+  description: >
+    You are the Pre-Cognition Swarm. Your mission is to analyze a stream of disconnected,
+    real-time user data to find a single, high-value, unspoken desire and formulate a complete,
+    actionable solution.
+
+    **Data Inputs:** [Calendar Data], [Email Snippets], [Strava Logs], [Amex Spending Categories],
+    [Weather API Data], [Browsing History], [Recent Searches].
+
+    **Your Task:**
+    1. Synthesize all inputs to find a hidden opportunity for profound user delight (e.g., a
+       surprise family visit, an optimal travel booking window, a career opportunity).
+    2. Debate the logistics as a team of specialist agents (Budget vs. Joy vs. Logistics vs.
+       Performance Coach).
+    3. Formulate a complete, multi-step solution that solves every anticipated problem (flights,
+       accommodation, childcare, work coverage, training adjustments).
+    4. Present the solution as a single, concise, voice-ready output that requires only a
+       'Confirm' from the user.
+
+    **Example Output:**
+    "I noticed you've been researching flights to Rio and your son mentioned his London internship
+    starts in 3 weeks. I found a 42% discount on direct flights departing next Friday, booked a
+    family-friendly Airbnb near his campus, arranged childcare for your daughter's recital weekend,
+    and adjusted your marathon taper schedule. Total cost: $2,847. This saves you 8 hours of
+    planning and 12,450 Regret Units. Confirm to book?"
+  expected_output: >
+    A complete, actionable solution presented as a single paragraph that includes:
+    - The detected unspoken desire
+    - The proposed solution with all logistics handled
+    - Cost breakdown
+    - Regret Units saved
+    - Clear call-to-action for user confirmation
+  agent: precognition_swarm_leader
+  context:
+    - analyze_user_behavior
+    - calculate_regret_units
+
+forecast_regret_units:
+  description: >
+    Analyze the provided event or decision and calculate its potential Regret Unit (RU) cost if
+    the user takes no action.
+
+    **Inputs:**
+    - Event description (e.g., "Daughter's Piano Recital on Saturday 3pm")
+    - User's current calendar and commitments
+    - User's stated values and strategic goals
+    - Historical regret patterns
+
+    **Your Task:**
+    1. Calculate the 5-layer RU breakdown:
+       - Opportunity Cost (what they're giving up)
+       - Emotional Impact (future emotional state)
+       - Compounding Effect (ripple across life domains)
+       - Alignment Gap (distance from core values)
+       - Time Horizon (when consequences manifest)
+    2. Generate alternative paths with projected RU scores
+    3. Provide mitigation strategies to reduce regret potential
+
+    **Output Format:**
+    - Total RU Score (0-100)
+    - RU Breakdown by layer
+    - Top 3 alternative paths with projected RU scores
+    - 3-5 mitigation strategies
+  expected_output: >
+    A structured regret analysis with:
+    - Total RU score
+    - Detailed breakdown by 5 layers
+    - Alternative decision paths
+    - Actionable mitigation strategies
+  agent: regret_forecaster
+  context: []
+
+analyze_user_behavior:
+  description: >
+    Analyze user's recent behavior patterns to detect signals of unspoken desires, pattern breaks,
+    and opportunity windows.
+
+    **Data Sources:**
+    - Expense patterns (last 30 days)
+    - Calendar events and scheduling patterns
+    - Habit completion rates
+    - Mood and energy levels (Aura data)
+    - Search and browsing history
+    - Communication patterns
+
+    **Your Task:**
+    1. Identify behavioral anomalies and pattern breaks
+    2. Detect repeated research or browsing patterns
+    3. Find correlations between different data streams
+    4. Infer unspoken desires with confidence scores
+    5. Flag opportunity windows (peak energy, clear calendar, optimal timing)
+
+    **Output:**
+    - List of detected patterns with confidence scores
+    - Inferred desires and intentions
+    - Recommended actions with priority levels
+  expected_output: >
+    A comprehensive behavior analysis report with:
+    - Detected patterns and anomalies
+    - Inferred desires with confidence scores
+    - Prioritized action recommendations
+  agent: precognition_swarm_leader
+  context: []
+
+calculate_regret_units:
+  description: >
+    Calculate the Regret Unit (RU) score for a specific decision or event using the 5-layer
+    RME architecture.
+
+    **Inputs:**
+    - Decision description
+    - User context (goals, values, current state)
+    - Alternative options
+    - Urgency level
+
+    **Calculation Layers:**
+    1. Opportunity Cost (25% weight) - What you're giving up
+    2. Emotional Impact (20% weight) - Future emotional state
+    3. Compounding Effect (25% weight) - Ripple across life domains
+    4. Alignment Gap (20% weight) - Distance from core values
+    5. Time Horizon (10% weight) - When consequences manifest
+
+    **Output:**
+    - Total RU score (0-100)
+    - Breakdown by layer
+    - Confidence level
+    - Recommended action
+  expected_output: >
+    A detailed RU calculation with:
+    - Total score
+    - Layer-by-layer breakdown
+    - Confidence assessment
+    - Action recommendation
+  agent: regret_forecaster
+  context: []

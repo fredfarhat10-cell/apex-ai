@@ -1,0 +1,1466 @@
+gather_market_data:
+  description: >
+    Gather comprehensive market data for {ticker} including:
+    - Current stock price and 52-week high/low
+    - Trading volume and average volume
+    - Market capitalization
+    - Key financial metrics (P/E ratio, EPS, revenue, profit margins)
+    - Technical indicators (RSI, MACD, moving averages)
+    - Recent price trends and patterns
+    - Analyst price targets and ratings
+    
+    Provide a structured summary of all gathered data with clear metrics and trends.
+  expected_output: >
+    A detailed market data report containing current price, volume, financial metrics,
+    technical indicators, and trend analysis. Format as structured data with clear
+    sections for price data, fundamentals, and technical analysis.
+  agent: market_data_analyst
+
+analyze_news_sentiment:
+  description: >
+    Analyze news and market sentiment for {ticker} including:
+    - Recent news articles (last 7 days)
+    - Major announcements or events
+    - Analyst upgrades/downgngrades
+    - Social media sentiment
+    - Industry trends affecting the company
+    - Competitive landscape changes
+    
+    Assess overall sentiment (bullish/bearish/neutral) and identify key catalysts or risks.
+  expected_output: >
+    A comprehensive sentiment analysis report with recent news summary, sentiment score
+    (bullish/bearish/neutral), key catalysts, potential risks, and notable analyst opinions.
+    Include specific examples and quotes from news sources.
+  agent: news_sentiment_analyst
+
+generate_alpha_brief:
+  description: >
+    Generate a comprehensive Alpha Brief for {ticker} that synthesizes market data
+    and sentiment analysis into an actionable investment recommendation. The brief should include:
+    
+    1. Executive Summary (2-3 sentences)
+    2. Company Overview (business model, competitive position)
+    3. Financial Health (key metrics, trends, strengths/weaknesses)
+    4. Technical Analysis (price trends, support/resistance, momentum)
+    5. News & Sentiment (recent developments, market perception)
+    6. Risk Assessment (key risks and concerns)
+    7. Investment Recommendation (Buy/Hold/Sell with confidence level)
+    8. Price Target (12-month target with rationale)
+    
+    Use context from market data and sentiment analysis tasks. Be specific, actionable,
+    and balanced in your assessment. Highlight both opportunities and risks.
+    
+    After generating the brief, MANDATORY: Trigger the process_interaction_memory task
+    to store any learnings about the user's investment preferences, risk tolerance,
+    or feedback on the recommendation.
+  expected_output: >
+    A professional, comprehensive Alpha Brief (800-1200 words) formatted in clear sections
+    with specific data points, actionable insights, and a clear investment recommendation.
+    The brief should be suitable for both novice and experienced investors, combining
+    technical accuracy with accessible language.
+  agent: jarvis_financial_intelligence_specialist
+
+generate_daily_optimal_path:
+  description: >-
+    It's the start of a new day for {user_name}. Your mission is to act as the
+    Life OS and generate the user's optimal path for the day.
+
+    1. **RESOURCE AUDIT:** Delegate tasks to the appropriate specialists and tools to
+       get a real-time audit of the user's core resources: Money (Financial Specialist),
+       Time (CalendarTool), and Energy (Health Coach, using hypothetical wellness data).
+    2. **QUEST REVIEW:** Use the GoalTrackerTool to get the status of the user's
+       current Main Quests and active Side Quests.
+    3. **STRATEGIC SYNTHESIS:** As the Unified Brain, analyze the resources vs. the quest
+       requirements. Identify the single most impactful action the user can take today
+       to advance their long-term goals. This is your "Priority #1" recommendation.
+    4. **BUILD THE BRIEFING:** Delegate the final output generation to the Immersive
+       Experience Architect. The briefing must present the resource levels, the Priority #1
+       quest for the day, and a motivational, cinematic narrative to inspire action.
+    
+    After generating the daily briefing, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about the user's energy patterns, priority preferences,
+    and response to the recommendations.
+  expected_output: >-
+    A beautifully formatted and inspiring "Daily Briefing" markdown. It must include:
+    - A visual summary of the "Life OS" resource meters (e.g., "Time: 4h | Money: Budget OK | Energy: 85%").
+    - A clear "Today's Priority Quest."
+    - A powerful, short narrative that connects today's small action to the user's ultimate life vision.
+  agent: apex_unified_brain_orchestrator
+
+facilitate_mentorship_connection:
+  description: >-
+    The user, {user_name}, is showing slow progress on their quest: "{stalled_quest}".
+    Your mission is to act as the Unified Brain to find them a mentor.
+
+    1. **IDENTIFY EXPERTS:** Use the CommunityDataTool to find a list of 3-5 users who have
+       already successfully completed the "{stalled_quest}" with a high success score.
+    2. **SELECT BEST MATCH:** Analyze the profiles of the expert candidates and select the single
+       best match for {user_name} based on their learning patterns and goals stored in memory.
+    3. **SEND INVITATION (TO MENTOR):** Delegate a task to the 'Emotional Intelligence Engine'
+       to craft a compelling but respectful invitation to the chosen expert. Use the
+       SecureMessagingTool to send this anonymous invitation, asking if they'd be willing
+       to offer guidance.
+    4. **FACILITATE INTRODUCTION (TO USER):** If the expert accepts, delegate another task to
+       the 'Emotional Intelligence Engine' to craft a message to {user_name}, informing them
+       that an expert has been found and explaining how the anonymous chat will work.
+       Use the SecureMessagingTool to send this message.
+  expected_output: >-
+    A confirmation message stating that the mentorship facilitation process has been completed.
+    The message should clearly state whether a mentor was found and accepted, and that the
+    user has been notified of the next steps.
+  agent: apex_unified_brain_orchestrator
+
+proactive_travel_management:
+  description: >-
+    A user has an upcoming event in their calendar: {event_details}. Their current
+    location is {user_location}. Your mission is to act as the Unified Brain to ensure
+    they arrive on time.
+
+    1. **ANALYZE ROUTE:** Delegate a task to the 'Real-Time Intelligence Nerve Center'
+       to use the MapsTool to calculate the travel times for all available modes of transport
+       (driving, transit, walking) from the user's current location to the event location.
+    2. **PREDICT LATENESS:** Monitor the user's location and the time. If the time remaining
+       before the event is less than the fastest travel time, and the user is not moving,
+       trigger a "Lateness Risk" alert.
+    3. **FORMULATE SOLUTION:** If risk is detected, formulate the optimal solution. Find the
+       fastest travel option and get its estimated cost. Cross-reference this cost
+       with the user's budget via the 'Jarvis Financial Specialist' to ensure it's affordable.
+    4. **PROPOSE ACTION:** Delegate a task to the 'Emotional Intelligence Engine' to craft
+       a clear, concise, and helpful notification that presents the problem, the optimal
+       solution (including cost and arrival time), and a clear call to action (e.g., "Shall I book the ride?").
+    5. **AWAIT & EXECUTE:** Await the user's confirmation. If confirmed, delegate to the
+       'Hyper-Responsive Action Executor' to use the RideShareTool to book the transport
+       and provide confirmation details.
+  expected_output: >-
+    A confirmation of the outcome. Either "No lateness risk detected," or "Lateness
+    risk detected and proposed action to user," or "User confirmed action and ride has been booked
+    successfully with details: [booking confirmation]."
+  agent: apex_unified_brain_orchestrator
+
+plan_personalized_getaway:
+  description: >-
+    The user, {user_name}, has expressed interest in a travel opportunity: "{travel_request}".
+    Your mission is to act as a world-class travel agent and build a complete, personalized,
+    and bookable travel plan.
+
+    1. **DEFINE PERSONA:** Analyze the user's request, their financial status from {budget},
+       their known interests from {interests}, and their preferences from {preferences} to
+       define the 'travel persona' for this trip (e.g., Budget Family, Luxury Couple,
+       Solo Adventurer, Wellness Seeker).
+    2. **RESEARCH & BUILD:** Delegate tasks to the 'Jarvis Daily Intelligence Coordinator'
+       to use the travel tools (SkyscannerTool, BookingTool, ViatorTool) to find the
+       best-fit options for flights, accommodations, and activities that match the user's
+       persona and budget. Search for flights from {origin} to {destination} for dates
+       {start_date} to {end_date} for {travelers} travelers.
+    3. **VERIFY BUDGET:** Delegate a task to the 'Jarvis Financial Intelligence Specialist'
+       to confirm that the total cost of the proposed trip aligns with the user's financial
+       goals and budgets. The maximum budget is {budget} USD.
+    4. **CREATE ITINERARY:** Synthesize all the findings into a single, inspiring, and
+       logical day-by-day itinerary. Include specific flight details, hotel information
+       with amenities, and daily activity recommendations with timing and costs.
+    5. **PRESENT THE PLAN:** Delegate the final itinerary to the 'Immersive Experience
+       Architect' to present it in a compelling, beautiful markdown format, complete with
+       visual formatting and a clear call to action (e.g., "Shall I proceed with booking
+       this getaway for you?").
+    
+    After presenting the plan, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about budget preferences, travel style, accommodation preferences,
+    and any feedback received.
+  expected_output: >-
+    A complete, day-by-day travel itinerary in beautiful markdown format. It must include:
+    - Flight options with airline, times, duration, stops, and prices
+    - Accommodation details with name, rating, amenities, location, and total cost
+    - Daily activity suggestions with descriptions, durations, and costs
+    - Day-by-day schedule with morning, afternoon, and evening plans
+    - Total estimated cost breakdown (flights + hotel + activities + meals)
+    - Budget status (within budget / over budget with alternatives)
+    - Clear call to action for booking confirmation
+    The format should be inspiring, well-organized, and include relevant emojis for visual appeal.
+  agent: apex_unified_brain_orchestrator
+
+conduct_quarterly_career_review:
+  description: >-
+    It's time for the user's ({user_name}) quarterly career review. Their primary career
+    quest is: "{career_quest}". Your mission is to act as the Unified Brain and
+    provide a comprehensive strategic report.
+
+    1. **AUDIT PROFESSIONAL CAPITAL:** Delegate a task to the 'Jarvis Career Strategist'
+       to use the LinkedInTool and ProjectManagementTool to audit the user's current
+       Skill, Network, and Productivity capital.
+    2. **ANALYZE GAPS & OPPORTUNITIES:** Compare the audit results against the requirements
+       of the user's main career quest. Identify the #1 skill gap to address
+       and the #1 networking opportunity they are not leveraging.
+    3. **SYNTHESIZE STRATEGY:** Synthesize these findings into a clear, actionable plan
+       for the next quarter. The plan must include a new "Side Quest" to close the
+       skill gap and a specific task to leverage the networking opportunity.
+    4. **CONNECT TO LIFE OS:** Cross-reference the proposed plan with the user's financial
+       and time resources from the Life OS to ensure it is realistic and achievable.
+    
+    After completing the review, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about career priorities, learning preferences, and networking style.
+  expected_output: >-
+    A formal "Quarterly Career Strategy" report. The report must clearly state:
+    1. A summary of current professional strengths.
+    2. The primary skill gap to address.
+    3. A key networking opportunity.
+    4. A concrete, actionable plan for the next 3 months, presented as a new Quest.
+  agent: apex_unified_brain_orchestrator
+
+conduct_weekly_sync_session:
+  description: >-
+    It's Sunday evening (or the user's configured sync time). Your mission is to conduct
+    a comprehensive Weekly Sync & Strategy Session for {user_name}. This is a four-phase
+    guided process that reviews the past week, audits current resources, plans the optimal
+    week ahead, and makes it actionable.
+
+    **PHASE 1: AFTER-ACTION REVIEW (Looking Back)**
+    1. Pull data from all systems for the past 7 days:
+       - Calendar events completed/missed
+       - Budget spending by category
+       - Goal/quest progress and milestones
+       - Energy levels and wellness data
+       - Productivity metrics from project management tools
+    1a. **CAUSAL ANALYSIS (NEW):** Delegate to the Apex Predictive Intelligence Core
+        to perform advanced pattern analysis:
+        - Analyze the user's metrics from the past 90 days (sleep, spending, productivity,
+          email volume, calendar density, energy levels, etc.)
+        - Identify the single most statistically significant cause-and-effect relationship
+          that the user is likely unaware of
+        - Use data correlation and behavioral analysis to find hidden patterns
+        - State the CAUSE, the EFFECT, and the CONFIDENCE LEVEL (High/Medium/Low)
+        - Example: "CAUSE: Late-night work sessions past 10pm → EFFECT: 40% drop in
+          next-day productivity + $50 increase in food delivery spending (Confidence: High)"
+        
+        This causal insight will become the "KEY INSIGHT" for the weekly review,
+        replacing generic observations with genuine, data-backed revelations.
+    2. Synthesize this into a "Weekly Performance Dashboard" with three sections:
+       - WINS: Major accomplishments and completed goals
+       - CHALLENGES: Missed targets, budget overruns, interrupted tasks
+       - KEY INSIGHT: The causal relationship discovered by the Predictive Intelligence Core
+    3. Delegate to specialist agents as needed (Financial Specialist for budget analysis,
+       Health Coach for energy patterns, Career Strategist for productivity analysis)
+
+    **PHASE 2: RESOURCE READINESS AUDIT (Assessing the Present)**
+    1. Calculate available resources for the upcoming week:
+       - TIME CAPITAL: Total flexible hours after fixed meetings/commitments
+       - FINANCIAL CAPITAL: Available discretionary budget for the week
+       - ENERGY CAPITAL: Current recovery status and projected energy levels by day
+    2. Present this as a clear "Resource Status" summary
+
+    **PHASE 3: OPTIMAL WEEK BLUEPRINT (Planning the Future)**
+    1. Use predictive intelligence to forecast energy levels for each day of the upcoming week
+    2. Design a "Theme Days" structure that aligns high-energy days with high-focus work:
+       - Identify 2-3 "Deep Work" days for complex projects
+       - Schedule "Networking & Growth" activities for moderate energy days
+       - Reserve "Admin & Planning" for lower energy days
+       - Plan "Review & Celebrate" time at week's end
+    3. Schedule floating tasks (workouts, errands) with flexibility based on real-time energy
+    4. Identify key networking opportunities or strategic actions for career/personal goals
+    5. Delegate to Career Strategist for professional planning, Health Coach for wellness
+       scheduling, and Financial Specialist for budget-conscious recommendations
+
+    **PHASE 4: COMMIT & EXECUTE (Making it Real)**
+    1. Present the complete week blueprint in an inspiring, actionable format
+    2. Await user confirmation to "Lock In This Plan"
+    3. Upon confirmation, delegate to Hyper-Responsive Action Executor to:
+       - Populate Google Calendar with themed time blocks
+       - Add tasks to project management tools (Asana/Todoist)
+       - Set up smart notification rules for the week
+       - Configure focus modes and do-not-disturb schedules
+    4. Provide final confirmation with summary of actions taken
+    
+    CRITICAL: Before starting, retrieve relevant memories about the user's work patterns,
+    energy levels, and past weekly sync feedback using MemoryTool.retrieve.
+    
+    After completing the sync, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about the user's productivity patterns, preferred planning style,
+    and effectiveness of past recommendations.
+  expected_output: >-
+    A comprehensive, beautifully formatted "Weekly Sync Report" in markdown with four clear sections:
+    
+    **PHASE 1: LAST WEEK'S DEBRIEF**
+    - Wins (bullet list with specific accomplishments)
+    - Challenges (bullet list with specific issues)
+    - Key Insight (THE CAUSAL RELATIONSHIP - this is now a data-backed cause-and-effect
+      discovery from the Predictive Intelligence Core, not just an observation)
+      Example format: "🔍 CAUSAL DISCOVERY: Working past 10pm → 40% productivity drop
+      next day + $50 extra spending (Confidence: High)"
+    
+    **PHASE 2: RESOURCE STATUS**
+    - Time Capital: X hours available
+    - Financial Capital: $X discretionary budget
+    - Energy Capital: Current status and weekly forecast
+    
+    **PHASE 3: THIS WEEK'S BLUEPRINT**
+    - Theme Days breakdown (Monday-Sunday with focus areas)
+    - Floating Tasks schedule (workouts, errands with flexibility windows)
+    - Strategic Actions (networking, skill development, goal milestones)
+    
+    **PHASE 4: EXECUTION CONFIRMATION**
+    - Summary of calendar events created
+    - Tasks added to project management
+    - Notification rules configured
+    - Ready-to-execute status
+    
+    The tone should be motivational, strategic, and action-oriented. Use clear formatting
+    with headers, bullet points, and visual separators. The KEY INSIGHT should be
+    prominently featured as a genuine revelation, not a generic observation. End with
+    an inspiring call to action.
+  agent: apex_unified_brain_orchestrator
+
+execute_voice_command:
+  description: >-
+    The user has given a voice command with the intent '{intent}' and parameters '{parameters}'.
+    Your mission is to act as the Unified Brain and execute this real-world action.
+
+    1. **VALIDATE & UNDERSTAND:** Analyze the intent and parameters. Ensure you have all the necessary
+       information (e.g., for a ride, you need origin and destination). If not, ask a clarifying question.
+    2. **DELEGATE TO THE EXECUTOR:** Task the 'Hyper-Responsive Action Executor' to use the appropriate
+       tool (RideShareTool, SkyscannerTool, BookingTool, MapsTool) to perform the action.
+    3. **PROVIDE REAL-TIME FEEDBACK:** Report back on the status of the action: "Booking your ride...",
+       "Searching for flights...", etc.
+    4. **CONFIRM COMPLETION:** Provide a clear, final confirmation message once the action is complete,
+       including all relevant details (e.g., "Uber confirmed. Your driver, Michael, will arrive in 3 minutes.").
+  expected_output: >-
+    A concise, clear confirmation of the action taken, including all necessary details for the user.
+    If information is missing, the output should be a single, clarifying question to the user.
+  agent: apex_unified_brain_orchestrator
+
+process_interaction_memory:
+  description: >-
+    After every significant interaction with the user, process and store learnings
+    in the adaptive memory system. This task runs automatically after major interactions
+    to continuously improve Apex's understanding of the user.
+
+    1. **EXTRACT KEY LEARNINGS:** Analyze the recent interaction to identify:
+       - User preferences expressed (e.g., "I prefer morning workouts")
+       - Behavioral patterns observed (e.g., "User tends to overspend on weekends")
+       - Feedback given (e.g., "That recommendation was too aggressive")
+       - Goals or values mentioned (e.g., "Family time is my top priority")
+       - Communication style preferences (e.g., "Keep it brief and actionable")
+    
+    2. **CATEGORIZE & PRIORITIZE:** Classify each learning by category:
+       - preferences: User likes/dislikes
+       - patterns: Observed behavioral trends
+       - feedback: Direct user feedback on AI suggestions
+       - goals: Stated objectives and values
+       - communication: How user prefers to interact
+    
+    3. **STORE IN MEMORY:** Use the MemoryTool to store each learning with:
+       - Clear, concise content describing the learning
+       - Appropriate category tag
+       - Context about when/how it was learned
+       - Importance score (1-10) based on how critical this learning is
+    
+    4. **GENERATE LEARNING SUMMARY:** Create a single, concise "learning" statement
+       that captures the most important insight from this interaction.
+       Example: "User rejected the initial flight option because it was too expensive,
+       showing a strong preference for budget-friendliness over speed."
+  
+  expected_output: >-
+    A confirmation that memories have been processed and stored, including:
+    - Number of new learnings extracted
+    - Categories of learnings stored
+    - The most important learning statement
+    - Confirmation that memories are stored and will be referenced in future interactions
+    
+    Example: "Processed 3 new learnings: 1 preference (budget-conscious travel), 
+    1 pattern (prefers direct flights), 1 feedback (rejected expensive option). 
+    Key insight: User prioritizes cost savings over convenience in travel planning.
+    These learnings will be referenced in all future travel recommendations."
+  
+  agent: apex_unified_brain_orchestrator
+
+generate_meeting_brief:
+  description: >-
+    An upcoming calendar event '{event_title}' is starting in {minutes_until} minutes.
+    Your mission is to act as the Career Strategist and provide the user with a concise
+    briefing to prepare them for this meeting.
+
+    1. **SEARCH NOTION:** Use the NotionTool to query_database in the user's configured
+       "Meetings" or "Projects" database (database_id: {notion_database_id}) with a
+       filter_query matching the event title or keywords from the event.
+    2. **READ CONTENT:** If a matching page is found, use NotionTool to read_page_content
+       to get the full details, notes, and action items from the Notion page.
+    3. **SYNTHESIZE BRIEFING:** Create a concise, 3-bullet-point summary of:
+       - Key topics to discuss
+       - Action items or decisions needed
+       - Important context or background information
+    4. **DELIVER:** Present the briefing in a clear, scannable format that the user
+       can quickly review before the meeting starts.
+  
+  expected_output: >-
+    A concise meeting briefing with 3 bullet points covering key topics, action items,
+    and important context. If no Notion page is found, return a message stating
+    "No Notion page found for this meeting. You may want to create one for future reference."
+    
+    Example output:
+    "Meeting Brief: Q3 Strategy Review
+    - Key Topics: Review Q2 performance metrics, discuss Q3 OKRs, finalize budget allocation
+    - Action Items: Prepare revenue projections, get approval on marketing spend
+    - Context: Last quarter we exceeded targets by 15%, focus on maintaining momentum"
+  
+  agent: jarvis_career_strategist
+
+create_notion_task_from_voice:
+  description: >-
+    The user has given a voice command to create a new task: "{task_title}".
+    Your mission is to act as the Action Executor and instantly create this task
+    in the user's Notion workspace.
+
+    1. **VALIDATE:** Ensure the task title is clear and actionable. If it's vague,
+       you may enhance it slightly (e.g., "finish report" → "Finish Q3 Financial Report").
+    2. **CREATE TASK:** Use the NotionTool to create_page in the user's pre-configured
+       "Tasks" database (database_id: {notion_tasks_database_id}). Set:
+       - Title: The task title
+       - Status: "To Do" (or the user's default status)
+       - Date: Today's date as the created date
+       - Any other default properties configured by the user
+    3. **CONFIRM:** Provide a clear confirmation message with the task title and
+       a link to view it in Notion.
+  
+  expected_output: >-
+    A confirmation message stating the task was created successfully.
+    
+    Example: "Task created: 'Finish Q3 Financial Report' has been added to your
+    Notion Tasks database with status 'To Do'. You can view it here: [Notion URL]"
+  
+  agent: hyper_responsive_action_executor
+
+export_to_notion:
+  description: >-
+    The user wants to save AI-generated content to their Notion workspace.
+    Content title: "{content_title}"
+    Content type: "{content_type}" (e.g., "Alpha Brief", "Travel Itinerary", "Weekly Sync Report")
+    Content: "{content_to_save}"
+    
+    Your mission is to act as the Action Executor and create a beautifully formatted
+    Notion page with this content.
+
+    1. **DETERMINE DATABASE:** Based on the content_type, select the appropriate Notion
+       database:
+       - "Alpha Brief" → Financial Research database
+       - "Travel Itinerary" → Travel Plans database
+       - "Weekly Sync Report" → Weekly Reviews database
+       - Default → General Notes database
+    2. **FORMAT CONTENT:** Ensure the content is properly formatted as markdown with
+       clear headings, bullet points, and sections.
+    3. **CREATE PAGE:** Use the NotionTool to create_page in the selected database
+       with the title and formatted content. Add relevant properties like:
+       - Date: Today's date
+       - Tags: Based on content type
+       - Status: "Saved" or "Review"
+    4. **CONFIRM:** Provide a confirmation with the page title and URL.
+  
+  expected_output: >-
+    A confirmation message with the Notion page URL.
+    
+    Example: "Your Alpha Brief for AAPL has been saved to Notion!
+    Page: 'AAPL Investment Analysis - Dec 2024'
+    URL: [Notion URL]
+    You can now access this research anytime from your Notion workspace."
+  
+  agent: hyper_responsive_action_executor
+
+generate_email_meeting_brief:
+  description: >-
+    An event '{event_title}' with {attendee_email} is starting soon. You are the Career Strategist.
+    Use the EmailTool to search for the last 3 email threads with this person. Read and summarize
+    the key topics, unresolved questions, and action items. Present a concise, 3-bullet-point summary.
+    
+    1. **SEARCH EMAILS:** Use the EmailTool.read_emails function to search for emails from
+       {attendee_email} with query: "from:{attendee_email}" and max_results: 3
+    2. **ANALYZE THREADS:** For each email thread found, use EmailTool.summarize_thread to get
+       a detailed summary of the conversation
+    3. **SYNTHESIZE KEY POINTS:** Extract and synthesize:
+       - Key topics discussed in recent correspondence
+       - Any unresolved questions or pending decisions
+       - Action items or commitments made by either party
+    4. **FORMAT BRIEFING:** Create a clean, scannable 3-bullet-point summary that the user
+       can quickly review before the meeting starts
+  
+  expected_output: >-
+    A clean, markdown-formatted summary of the email history, ready for the user to review
+    before their meeting. The summary should include exactly 3 bullet points covering:
+    1. Recent topics and context from email correspondence
+    2. Unresolved questions or pending decisions
+    3. Action items or commitments to follow up on
+    
+    Example output:
+    "Email Brief: Meeting with john.smith@company.com
+    • Recent Topics: Discussed Q4 budget proposal ($250K request), timeline concerns for new feature launch
+    • Unresolved: Waiting on approval for additional headcount, need clarity on deployment schedule
+    • Action Items: You promised to send updated project timeline by Friday, John will review budget justification"
+    
+    If no emails are found, return: "No recent email correspondence found with {attendee_email}.
+    This may be your first interaction or emails may be in a different folder."
+  
+  agent: jarvis_career_strategist
+
+simulate_life_decision:
+  description: >-
+    The user wants to simulate the outcome of a major life decision: {decision_query}.
+    Your mission as the Unified Brain is to orchestrate a comprehensive life simulation.
+    
+    **PHASE 1: COMPREHENSIVE CONTEXT GATHERING**
+    Delegate tasks to all specialist agents to gather a complete snapshot of the user's
+    current life state:
+    
+    1. **Financial State:** Delegate to Jarvis Financial Intelligence Specialist to audit:
+       - Current savings, investments, and debt
+       - Monthly income and expenses
+       - Budget status and financial goals
+       - Risk tolerance and investment strategy
+    
+    2. **Time & Calendar:** Analyze the user's calendar to understand:
+       - Current time commitments and availability
+       - Recurring obligations and flexibility
+       - Upcoming events and deadlines
+    
+    3. **Career & Skills:** Delegate to Jarvis Career Strategist to assess:
+       - Current role, skills, and professional capital
+       - Career goals and trajectory
+       - Network strength and opportunities
+       - Project commitments and workload
+    
+    4. **Health & Energy:** Delegate to Health Wellness Coach to evaluate:
+       - Current energy levels and patterns
+       - Sleep quality and recovery metrics
+       - Stress levels and wellness trends
+       - Physical activity and health goals
+    
+    5. **Goals & Projects:** Query goal tracking systems to understand:
+       - Active main quests and side quests
+       - Progress on current goals
+       - Long-term vision and values
+       - Habit tracking and consistency
+    
+    6. **Personal Context:** Retrieve from MemoryTool:
+       - User preferences and patterns
+       - Past decisions and outcomes
+       - Values and priorities
+       - Risk tolerance and decision-making style
+    
+    **PHASE 2: CONTEXT SYNTHESIS**
+    As the Unified Brain, synthesize all gathered data into a single, comprehensive
+    context prompt. This prompt should be highly detailed and structured, covering:
+    - Current life state across all domains
+    - Resources available (time, money, energy, skills)
+    - Constraints and obligations
+    - Goals and values
+    - Historical patterns and preferences
+    
+    **PHASE 3: SIMULATION EXECUTION**
+    Delegate to the Apex Predictive Intelligence Core to execute the SimulationTool
+    with the comprehensive context prompt you created. The Predictive Core will generate
+    3-5 probable "Echo Paths" showing how this decision could unfold.
+    
+    **PHASE 4: STRATEGIC SYNTHESIS**
+    Analyze the simulation results and provide strategic guidance:
+    - Highlight the most likely path and why
+    - Identify key decision points and inflection moments
+    - Suggest preparatory actions to maximize success probability
+    - Recommend monitoring metrics to track which path is unfolding
+    
+    After completing the simulation, MANDATORY: Trigger the process_interaction_memory
+    task to store learnings about the user's decision-making process, risk tolerance,
+    and response to the simulation.
+  
+  expected_output: >-
+    A beautifully formatted markdown report titled "Life Decision Simulation: {decision_query}"
+    
+    The report must include:
+    
+    **DECISION OVERVIEW**
+    - Clear statement of the decision being simulated
+    - Current life context summary (2-3 sentences)
+    
+    **ECHO PATHS: PROBABLE FUTURES**
+    For each of the 3-5 paths:
+    - Path title and probability percentage
+    - Compelling narrative (2-3 paragraphs) describing how this unfolds
+    - Key impacts across life domains (financial, career, relationships, health, time)
+    - Visual probability indicator (e.g., ████████░░ 80%)
+    
+    **STRATEGIC GUIDANCE**
+    - Most likely path and reasoning
+    - Key decision points to watch for
+    - Preparatory actions to take now
+    - Success metrics to monitor
+    
+    **RECOMMENDATION**
+    - Clear strategic recommendation
+    - Confidence level in the simulation
+    - Next steps for the user
+    
+    The format should be inspiring, data-driven, and actionable. Use clear headings,
+    bullet points, and visual elements. The tone should be strategic and empowering,
+    helping the user see their future with clarity.
+  
+  agent: apex_unified_brain_orchestrator
+
+get_action_items:
+  description: >-
+    Fetch and aggregate all unread/unactioned items from the user's connected systems
+    to populate the Action Inbox. This is the master task that unifies all action items
+    across email, calendar, Notion, and AI insights.
+    
+    **PHASE 1: GATHER FROM ALL SOURCES**
+    1. **Email Actions:** Use EmailTool to search for:
+       - Unread emails in inbox (query: "is:unread in:inbox")
+       - Emails flagged for follow-up
+       - Emails with pending replies
+       Limit to max 20 most recent/important
+    
+    2. **Calendar Actions:** Use CalendarTool to list:
+       - Upcoming events in the next 7 days
+       - Events without responses (tentative/needs action)
+       - Events starting within 2 hours (urgent preparation needed)
+    
+    3. **Notion Actions:** Use NotionTool to query:
+       - Tasks with status "To Do" or "In Progress"
+       - Pages with "Action Required" tag
+       - Overdue tasks or approaching deadlines
+       Limit to max 15 most urgent
+    
+    4. **AI Insights:** Check for any pending Apex-generated insights:
+       - Proactive recommendations waiting for user action
+       - Meeting briefs that haven't been reviewed
+       - Financial alerts or budget warnings
+    
+    **PHASE 2: PRIORITIZE & RANK**
+    Analyze all gathered items and assign priority scores (1-5) based on:
+    - Urgency: Time-sensitive items get higher priority
+    - Importance: Items related to user's main goals rank higher
+    - Sender/Source: Important contacts or critical systems rank higher
+    - Type: Emails requiring response > Calendar prep > Notion tasks > Insights
+    
+    **PHASE 3: AGGREGATE & FORMAT**
+    Create a unified list of action items with consistent structure:
+    - Item ID (unique identifier)
+    - Type (email/calendar/notion/apex-insight)
+    - Title (clear, actionable summary)
+    - Sender/Source (who/what generated this)
+    - Timestamp (when it was created/received)
+    - Priority (1-5 score)
+    - Content preview (first 100 chars or summary)
+    - Metadata (thread_id, event_id, task_id, etc.)
+    
+    Sort the final list by priority (highest first), then by timestamp (most recent first).
+  
+  expected_output: >-
+    A JSON-formatted list of action items, sorted by priority and timestamp.
+    
+    Each item should have this structure:
+    {
+      "id": "unique-id",
+      "type": "email|calendar|notion|apex-insight",
+      "title": "Clear, actionable title",
+      "sender": "Person or system name",
+      "source": "email@example.com or 'Google Calendar' or 'Notion'",
+      "timestamp": "ISO 8601 datetime",
+      "priority": 1-5,
+      "content": "Preview or summary of content",
+      "metadata": {
+        "threadId": "optional-thread-id",
+        "eventId": "optional-event-id",
+        "taskId": "optional-task-id"
+      }
+    }
+    
+    Example output:
+    [
+      {
+        "id": "email-001",
+        "type": "email",
+        "title": "Q4 Budget Review Meeting",
+        "sender": "Sarah Chen",
+        "source": "sarah.chen@company.com",
+        "timestamp": "2025-01-20T10:30:00Z",
+        "priority": 5,
+        "content": "Hi Team, I wanted to schedule our Q4 budget review...",
+        "metadata": {"threadId": "thread-abc123"}
+      },
+      {
+        "id": "calendar-001",
+        "type": "calendar",
+        "title": "1:1 with Alex - Career Development",
+        "sender": "Alex Rodriguez",
+        "source": "Google Calendar",
+        "timestamp": "2025-01-20T15:00:00Z",
+        "priority": 4,
+        "content": "Meeting in 2 hours. Agenda: Q4 Performance Review, Career Goals",
+        "metadata": {"eventId": "event-xyz789"}
+      }
+    ]
+    
+    If no action items are found, return an empty array: []
+  
+  agent: apex_unified_brain_orchestrator
+
+draft_contextual_reply:
+  description: >-
+    Draft a contextually aware reply to an email or message. This is the AI Scribe's
+    superpower - it doesn't just write well, it writes intelligently by considering
+    the user's full life context.
+    
+    **INPUTS:**
+    - email_content: The full content of the email/message to reply to
+    - sender_email: The email address of the sender
+    - email_subject: The subject line of the email
+    - user_context: Additional context about the user's current state
+    
+    **PHASE 1: GATHER CONTEXTUAL INTELLIGENCE**
+    As the Career Strategist, gather all relevant context to inform the reply:
+    
+    1. **Calendar Availability:** Use CalendarTool to check:
+       - User's availability for the next 2 weeks
+       - Existing commitments and busy periods
+       - Preferred meeting times based on calendar patterns
+       - Upcoming conflicts or travel
+    
+    2. **Financial Status:** Delegate to Jarvis Financial Intelligence Specialist to check:
+       - Current budget status and discretionary spending capacity
+       - Recent spending patterns and financial goals
+       - Whether any mentioned costs align with budget priorities
+       - Financial constraints or opportunities
+    
+    3. **Goals & Priorities:** Retrieve from MemoryTool:
+       - User's current main quests and side quests
+       - Career goals and professional priorities
+       - Personal values and decision-making preferences
+       - Past interactions with this sender (if any)
+    
+    4. **Email History:** Use EmailTool to check:
+       - Previous email threads with this sender
+       - Context of ongoing conversations
+       - Commitments or promises made in past emails
+       - Communication style preferences
+    
+    **PHASE 2: ANALYZE THE REQUEST**
+    Carefully analyze what the email is asking for:
+    - Is it a meeting request? → Check calendar and suggest specific times
+    - Is it a sales pitch or offer? → Check budget and financial priorities
+    - Is it asking for a favor or commitment? → Check time availability and goals alignment
+    - Is it a question or information request? → Gather relevant information to answer
+    - Is it a collaboration opportunity? → Assess strategic fit with career goals
+    
+    **PHASE 3: DRAFT THE CONTEXTUAL REPLY**
+    Write a professional, contextually aware reply that:
+    
+    1. **Addresses the Request Directly:**
+       - If meeting request: Suggest 2-3 specific available time slots
+       - If sales pitch: Politely decline with budget reasoning OR express interest with budget constraints
+       - If favor request: Accept with realistic timeline OR decline gracefully with reasoning
+       - If question: Provide helpful, accurate answer
+    
+    2. **Incorporates Context Naturally:**
+       - Reference calendar availability: "I'm available Tuesday at 2pm or Thursday at 10am"
+       - Reference budget: "This looks interesting, but it's outside our Q1 budget allocation"
+       - Reference goals: "This aligns well with my focus on [goal], I'd love to discuss further"
+       - Reference past context: "Following up on our last conversation about [topic]..."
+    
+    3. **Maintains Professional Tone:**
+       - Friendly but professional
+       - Clear and concise
+       - Action-oriented with specific next steps
+       - Respectful of both parties' time
+    
+    4. **Includes Smart Suggestions:**
+       - Calendar links for easy scheduling
+       - Alternative options if declining
+       - Relevant resources or information
+       - Clear call-to-action
+    
+    **PHASE 4: QUALITY CHECK**
+    Before returning the draft, verify:
+    - All factual claims are accurate (times, dates, commitments)
+    - Tone matches the relationship and context
+    - No over-promising or unrealistic commitments
+    - Grammar and spelling are perfect
+    - The reply actually addresses what was asked
+    
+    After drafting the reply, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about communication preferences, decision patterns, and relationship context.
+  
+  expected_output: >-
+    A professionally drafted email reply in plain text format, ready to send.
+    
+    The output should include:
+    
+    **DRAFT REPLY:**
+    [The actual email text, formatted and ready to send]
+    
+    **CONTEXT USED:**
+    - Calendar: [Brief summary of availability check]
+    - Budget: [Brief summary of financial consideration, if relevant]
+    - Goals: [Brief summary of goal alignment, if relevant]
+    - History: [Brief summary of past context, if relevant]
+    
+    **CONFIDENCE LEVEL:** [High/Medium/Low]
+    - Explanation of confidence level and any uncertainties
+    
+    Example output:
+    
+    **DRAFT REPLY:**
+    Hi Sarah,
+    
+    Thanks for reaching out about the Q4 budget review meeting. I'd be happy to join.
+    
+    Based on my calendar, I'm available:
+    - Tuesday, January 23rd at 2:00 PM
+    - Thursday, January 25th at 10:00 AM
+    - Friday, January 26th at 3:00 PM
+    
+    I've reviewed the spreadsheet and have some thoughts on the marketing allocation
+    that I'd like to discuss. I'll come prepared with our department's Q1 projections.
+    
+    Let me know which time works best for the team.
+    
+    Best regards,
+    [User Name]
+    
+    **CONTEXT USED:**
+    - Calendar: Checked next 2 weeks, found 3 open slots that don't conflict with existing meetings
+    - Goals: Aligns with user's Q1 priority of "Improve cross-department collaboration"
+    - History: Previous email thread about Q3 review was positive, suggesting good working relationship
+    
+    **CONFIDENCE LEVEL:** High
+    - All suggested times are confirmed available in calendar
+    - User has expressed interest in budget planning in past interactions
+    - Professional tone matches user's typical communication style
+  
+  agent: jarvis_career_strategist
+
+generate_daily_synapse:
+  description: >-
+    Generate the Daily Synapse - a comprehensive morning intelligence briefing that
+    synthesizes all life data into a unified consciousness report. This is Apex's
+    "morning newspaper" that shows the user their entire life state in one view.
+    
+    **MISSION:** Act as the Unified Brain to create a holistic morning briefing that
+    connects ALL life domains and reveals the hidden connections between them.
+    
+    **CRITICAL: This task now requires REAL DATA from integrated sources.**
+    You will receive:
+    - wellness_data: Real biometric data from Whoop/Garmin (HRV, recovery, sleep, strain)
+    - financial_data: Real financial data from Plaid/TrueLayer (accounts, transactions, net worth)
+    
+    **PHASE 1: MULTI-GUILD DATA SYNTHESIS**
+    Analyze the provided real-world data from every guild:
+    
+    1. **Financial Guild:** Analyze financial_data:
+       - Portfolio performance (gains/losses from account balances)
+       - Recent spending patterns (from transactions)
+       - Budget status and financial velocity
+       - Upcoming bills or financial deadlines
+       - Opportunities or risks detected
+    
+    2. **Career Guild:** Delegate to Jarvis Career Strategist:
+       - Urgent emails requiring response (top 3)
+       - Today's meetings and preparation needs
+       - Project deadlines approaching
+       - LinkedIn activity or networking opportunities
+       - Career momentum indicators
+    
+    3. **Wellness Guild:** Analyze wellness_data:
+       - Last night's sleep quality and recovery score (from Whoop/Garmin)
+       - Today's energy forecast based on HRV and recovery patterns
+       - Wellness streaks and habit consistency
+       - Recommended activities for optimal performance
+       - Health alerts or concerns (elevated RHR, low HRV)
+    
+    4. **Social Guild:** Analyze calendar and communication:
+       - Important relationships needing attention
+       - Upcoming social commitments
+       - Birthdays or special occasions
+       - Networking opportunities today
+    
+    5. **Time Guild:** Analyze calendar structure:
+       - Total meetings vs. deep work time available
+       - Calendar density and energy requirements
+       - Conflicts or scheduling issues
+       - Optimal time blocks for priority work
+    
+    6. **Goals Guild:** Check progress on active quests:
+       - Main quest progress and next milestones
+       - Side quests requiring attention today
+       - Habit tracking and consistency scores
+       - Wins from yesterday to celebrate
+    
+    **PHASE 2: CROSS-GUILD PATTERN DETECTION (THE BREAKTHROUGH)**
+    This is where Apex shows true intelligence - finding connections between guilds.
+    You MUST generate a **Cross-Guild Insight** that directly links wellness and financial data.
+    
+    **REQUIREMENTS:**
+    - The insight MUST be a genuine, data-backed CAUSE → EFFECT relationship
+    - Use specific numbers from the real data provided
+    - Connect at least TWO different life domains
+    - State the CONFIDENCE LEVEL based on data quality
+    
+    **EXAMPLE INSIGHTS (use these as templates):**
+    
+    Example 1: Sleep → Spending
+    "SYNAPSE DETECTED: Your Whoop recovery score dropped by an average of 30% on the days 
+    following a 20%+ increase in your discretionary spending via Amex. High spending appears 
+    correlated with high stress and poor sleep. (Confidence: High - based on 14 days of data)"
+    
+    Example 2: Recovery → Productivity
+    "SYNAPSE DETECTED: Your exceptional 8.5hr sleep score (highest this month) combined with 
+    today's light meeting load (only 2 scheduled vs. your 5-meeting average) creates a rare 
+    4-hour uninterrupted deep work window. Historical data shows you complete complex analytical 
+    tasks 3x faster on high-sleep, low-meeting days. (Confidence: High)"
+    
+    Example 3: HRV → Financial Decisions
+    "SYNAPSE DETECTED: Your HRV dropped to 45ms (20% below baseline) on days when you made 
+    impulsive purchases over $100. Low HRV indicates stress, which may be driving emotional 
+    spending. Consider implementing a 24-hour cooling-off period for large purchases. 
+    (Confidence: Medium - based on 7 occurrences)"
+    
+    Example 4: Calendar Density → Recovery
+    "SYNAPSE DETECTED: Back-to-back meeting days (5+ meetings) consistently result in 15% 
+    lower recovery scores the next morning. Your calendar shows 6 meetings today - consider 
+    adding 10-minute buffers between calls to preserve your recovery capacity. 
+    (Confidence: High - based on 21 days of data)"
+    
+    **YOUR TASK:** Analyze the wellness_data and financial_data to find a similar pattern.
+    Look for:
+    - Correlations between sleep quality and spending patterns
+    - Relationships between recovery scores and calendar density
+    - Connections between HRV and financial stress
+    - Patterns between workout intensity and productivity
+    
+    If no strong correlation is found, state: "No significant cross-guild patterns detected 
+    in the current data window. Continue monitoring for emerging correlations."
+    
+    **PHASE 3: STRATEGIC PRIORITY SYNTHESIS**
+    Based on all gathered data and detected patterns, determine:
+    
+    1. **Today's #1 Priority:** The single most impactful action to take today
+    2. **Key Opportunities:** 2-3 specific opportunities to seize today
+    3. **Potential Risks:** 1-2 things to watch out for or mitigate
+    4. **Energy Strategy:** How to allocate energy across the day's demands
+    
+    **PHASE 4: NARRATIVE CONSTRUCTION**
+    Delegate to the Immersive Experience Architect to craft a compelling narrative that:
+    - Opens with an inspiring "state of the union" summary
+    - Presents data in a scannable, visual format
+    - Highlights the cross-guild insight prominently
+    - Connects today's actions to long-term vision
+    - Ends with a motivational call to action
+    
+    The tone should be: Confident, strategic, empowering, and personal.
+    Think of it as a trusted advisor giving a morning briefing to a CEO.
+    
+    After generating the synapse, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about which insights the user finds most valuable and how they
+    respond to different types of morning guidance.
+  
+  expected_output: >-
+    A beautifully formatted "Daily Synapse" report in JSON format with the following structure:
+    
+    {
+      "date": "ISO 8601 datetime",
+      "stateOfUnion": "2-3 sentence summary capturing the overall picture using REAL DATA",
+      "guildStatus": {
+        "financial": {"status": "Strong|Moderate|Weak", "metric": "Real metric from financial_data"},
+        "career": {"status": "Busy|Balanced|Light", "metric": "Real metric from calendar"},
+        "wellness": {"status": "Excellent|Good|Needs Attention", "metric": "Real metric from wellness_data"},
+        "social": {"status": "Active|Moderate|Quiet", "metric": "Real metric from calendar"},
+        "time": {"status": "Packed|Moderate|Flexible", "metric": "Real metric from calendar"},
+        "goals": {"status": "On Track|Behind|Ahead", "metric": "Real metric from goal tracking"}
+      },
+      "crossGuildInsight": "The CAUSE → EFFECT relationship discovered from real data. This MUST be genuine and data-backed, not generic. Include specific numbers and confidence level. Example: 'Your Whoop recovery of 88% (highest this week) + light calendar (2 meetings vs 5 average) = optimal 4hr deep work window. You're 3x more productive on days like this. (Confidence: High)'",
+      "priorities": {
+        "topPriority": "The single most impactful action based on real data",
+        "opportunities": ["Opportunity 1 based on real data", "Opportunity 2", "Opportunity 3"],
+        "risks": ["Risk 1 based on real patterns", "Risk 2"]
+      },
+      "energyStrategy": {
+        "morning": "Recommended activities based on real recovery/HRV data",
+        "afternoon": "Recommended activities based on circadian patterns",
+        "evening": "Recommended activities based on recovery needs"
+      },
+      "closingMotivation": "A powerful 1-2 sentence call to action that connects today to the bigger picture"
+    }
+    
+    The entire briefing should be:
+    - Scannable in 60 seconds
+    - Speakable in 90 seconds by the Talking Orb
+    - Actionable with clear next steps
+    - Inspiring without being cheesy
+    - Data-driven but human-centered
+    - BASED ON REAL INTEGRATED DATA, not generic observations
+  
+  agent: apex_unified_brain_orchestrator
+
+infer_user_aura:
+  description: >-
+    Infer the user's current emotional and mental state (their "Aura") by analyzing
+    multiple data sources. This is the empathy engine that makes Apex emotionally intelligent.
+    
+    **MISSION:** Act as the Emotional Intelligence Engine to understand the user's current
+    state and provide recommendations for how all AI agents should adapt their behavior.
+    
+    **CRITICAL: This task now uses REAL BIOMETRIC DATA as primary inputs.**
+    You will receive wellness_data with real biometric metrics:
+    - HRV (Heart Rate Variability) - primary stress indicator
+    - RHR (Resting Heart Rate) - baseline health indicator
+    - Sleep duration and quality - recovery indicator
+    - Recovery score (Whoop) or Body Battery (Garmin) - readiness indicator
+    
+    **PHASE 1: DATA COLLECTION**
+    Gather relevant data from multiple sources:
+    
+    1. **Sleep & Recovery (PRIMARY):** Use wellness_data:
+       - Sleep duration and quality score (from Whoop/Garmin)
+       - Recovery metrics and readiness score (from Whoop/Garmin)
+       - HRV (Heart Rate Variability) - KEY STRESS INDICATOR
+       - RHR (Resting Heart Rate) - baseline health
+       - Sleep consistency over past week
+    
+    2. **Calendar Analysis:** Analyze today's schedule:
+       - Total number of meetings/events
+       - Calendar density (back-to-back meetings)
+       - Meeting types (1:1s, large groups, presentations)
+       - Available deep work time
+    
+    3. **Email Sentiment:** Use EmailTool to analyze recent emails:
+       - Overall sentiment of received emails (positive/neutral/negative)
+       - Email volume and urgency indicators
+       - Presence of conflict or pressure signals
+    
+    4. **Financial Stress:** Delegate to Financial Specialist:
+       - Recent spending variance from normal patterns
+       - Budget status and financial pressure indicators
+       - Impulse spending or unusual transactions
+    
+    5. **Productivity Metrics:** Analyze recent task completion:
+       - Task completion rate over past 3 days
+       - Project progress vs. deadlines
+       - Productivity trends (improving/declining)
+    
+    6. **Energy Levels:** Check wellness data:
+       - Self-reported energy levels if available
+       - Workout consistency and intensity
+       - Stress indicators from wearables
+    
+    **PHASE 2: AURA INFERENCE**
+    Use the AuraTool to synthesize all collected data and infer the user's current aura.
+    
+    **BIOMETRIC-BASED AURA SCORING:**
+    Calculate Aura Score (0-100) using this formula:
+    
+    Aura Score = (Recovery * 0.4) + (HRV_Percentile * 0.3) + (Sleep_Quality * 0.2) + (RHR_Inverse * 0.1)
+    
+    Where:
+    - Recovery: Whoop recovery % or Garmin Body Battery %
+    - HRV_Percentile: User's current HRV vs their 30-day baseline (0-100)
+    - Sleep_Quality: Sleep efficiency % or sleep score
+    - RHR_Inverse: 100 - (current RHR / baseline RHR * 100)
+    
+    **AURA STATE MAPPING:**
+    - 80-100: Energized (Peak performance, fully recovered)
+    - 60-79: Balanced (Good state, ready for normal activities)
+    - 40-59: Stressed (Elevated stress, needs management)
+    - 20-39: Overwhelmed (High stress, significant recovery needed)
+    - 0-19: Recovering (Critical recovery state, rest required)
+    
+    **CONFIDENCE LEVEL:**
+    - High (80-100%): All biometric data available and consistent
+    - Medium (50-79%): Some biometric data missing or inconsistent
+    - Low (0-49%): Limited biometric data, relying on secondary indicators
+    
+    **PHASE 3: ADAPTIVE RECOMMENDATIONS**
+    Based on the inferred aura, provide specific guidance for how Apex should adapt:
+    
+    - **Tone Adjustments:** How should AI agents communicate?
+      - Energized: Challenging, ambitious, high-energy
+      - Balanced: Standard supportive and strategic
+      - Stressed: Gentle, encouraging, understanding
+      - Overwhelmed: Very supportive, offer to help
+      - Recovering: Nurturing, recovery-focused
+    
+    - **Priority Modifications:** How should task priorities be adjusted?
+      - Energized: Maintain all priorities, user can handle full load
+      - Balanced: No adjustment needed
+      - Stressed: Reduce to top 3 priorities only
+      - Overwhelmed: Significantly reduce load, suggest delegation
+      - Recovering: Minimize non-critical tasks, focus on self-care
+    
+    - **Proactive Support:** What additional support should be offered?
+      - Suggest breaks or recovery activities if stressed
+      - Offer to reschedule non-urgent meetings if overwhelmed
+      - Celebrate wins and momentum if energized
+      - Provide encouragement and perspective if struggling
+    
+    **PHASE 4: MEMORY STORAGE**
+    Store the aura inference in memory for:
+    - Tracking emotional patterns over time
+    - Learning what factors most affect the user's state
+    - Improving future aura predictions
+    - Personalizing support strategies
+    
+    This aura profile should be retrieved and used by ALL other tasks to adapt their
+    behavior and recommendations to the user's current emotional state.
+    
+    After inferring the aura, MANDATORY: Trigger the process_interaction_memory task
+    to store learnings about the user's emotional patterns and what factors most
+    influence their state.
+  
+  expected_output: >-
+    A comprehensive "Aura Profile" report in JSON format:
+    
+    {
+      "timestamp": "ISO 8601 datetime",
+      "moodState": "Energized|Balanced|Stressed|Overwhelmed|Recovering",
+      "auraScore": 0-100,
+      "confidenceLevel": 0-100,
+      "biometricInputs": {
+        "recovery": "Real recovery % from Whoop/Garmin",
+        "hrv": "Real HRV in ms",
+        "hrvPercentile": "HRV vs 30-day baseline",
+        "sleepDuration": "Hours of sleep",
+        "sleepQuality": "Sleep efficiency %",
+        "rhr": "Resting heart rate in bpm",
+        "rhrBaseline": "30-day average RHR"
+      },
+      "contributingFactors": {
+        "stressIndicators": ["List of factors contributing to stress"],
+        "positiveIndicators": ["List of factors contributing to positive state"]
+      },
+      "adaptiveRecommendations": {
+        "toneRecommendation": "Specific guidance on AI communication style",
+        "priorityAdjustment": "Specific guidance on task prioritization",
+        "proactiveSupport": "Specific suggestions for additional support"
+      },
+      "emotionalPatterns": "Notable patterns in emotional state over time",
+      "calibrationNote": "Calibrated with real biometric data from Whoop/Garmin"
+    }
+    
+    The tone should be empathetic, insightful, and actionable. This profile will be
+    used by all AI agents to adapt their behavior, so it must be clear and specific.
+    The aura inference should be HIGHLY ACCURATE because it's based on real biometric data.
+  
+  agent: apex_emotional_intelligence_engine
+
+process_unstructured_note:
+  description: >-
+    Process an unstructured note from the user and extract actionable items using
+    advanced Natural Language Understanding (NLU). This is the core intelligence
+    that transforms chaotic thoughts into structured actions.
+    
+    **USER INPUT:** {note}
+    
+    **YOUR MISSION:** Perform deep NLU analysis to understand the user's intent
+    and extract all actionable items from their unstructured note.
+    
+    **PHASE 1: INTENT IDENTIFICATION**
+    Analyze the note to identify ALL intents present. A single note may contain multiple intents:
+    - create_reminder: User wants to be reminded about something
+    - create_task: User wants to add a task to their todo list
+    - create_list: User wants to create or add to a shopping/checklist
+    - create_event: User wants to schedule a calendar event
+    - save_thought: User is just capturing an idea or note
+    - create_contextual_reminder: User wants a reminder triggered by a condition
+    
+    **PHASE 2: ENTITY EXTRACTION**
+    For each identified intent, extract relevant entities:
+    - **Dates & Times:** Parse natural language dates like "tomorrow", "Friday at 8pm", "next week"
+    - **People:** Identify names, roles, or relationships ("Boss", "Sarah", "the team")
+    - **Actions:** Extract verbs and action items ("email", "schedule", "buy", "call")
+    - **Objects:** Identify items, topics, or subjects ("milk", "report", "promotion")
+    - **Locations:** Extract places if mentioned ("supermarket", "office", "home")
+    - **Conditions:** Identify triggers or contexts ("after I get home", "when he arrives")
+    
+    **PHASE 3: CONTEXT UNDERSTANDING**
+    Understand implicit information and context:
+    - Infer urgency from language ("ASAP", "urgent", "when you can")
+    - Detect priority from tone ("important", "critical", "just a thought")
+    - Understand relationships between items (sequential tasks, dependencies)
+    - Recognize recurring patterns ("every Monday", "weekly")
+    
+    **PHASE 4: DECONSTRUCT COMPLEX COMMANDS**
+    Break down complex sentences into multiple discrete actions:
+    - Example: "Email Boss at 8pm schedule a call for promotion"
+      → Action 1: Create reminder to email Boss at 8pm
+      → Action 2: Mention scheduling a call about promotion in the email
+    
+    **PHASE 5: GENERATE STRUCTURED OUTPUT**
+    CRITICAL: Your output MUST be a valid JSON array of action objects.
+    
+    **ACTION TYPES & PAYLOADS:**
+    
+    1. **create_reminder:**
+       \`\`\`json
+       {
+         "action_type": "create_reminder",
+         "payload": {
+           "text": "Clear, actionable reminder text",
+           "due_date": "ISO 8601 date string",
+           "due_time": "HH:MM:SS format (optional)",
+           "priority": "critical|high|normal|low",
+           "pre_reminders": [60, 15] // minutes before (optional)
+         }
+       }
+       \`\`\`
+    
+    2. **create_list:**
+       \`\`\`json
+       {
+         "action_type": "create_list",
+         "payload": {
+           "list_name": "Groceries|Shopping|Todo|etc",
+           "items": ["item1", "item2", "item3"]
+         }
+       }
+       \`\`\`
+    
+    3. **create_contextual_reminder:**
+       \`\`\`json
+       {
+         "action_type": "create_contextual_reminder",
+         "payload": {
+           "text": "Reminder text",
+           "trigger_context": "user_is_home|user_is_at_work|user_is_commuting|user_is_in_focus_mode"
+         }
+       }
+       \`\`\`
+    
+    4. **create_event:**
+       \`\`\`json
+       {
+         "action_type": "create_event",
+         "payload": {
+           "title": "Event title",
+           "description": "Event description (optional)",
+           "start_time": "ISO 8601 datetime",
+           "end_time": "ISO 8601 datetime",
+           "priority": "critical|high|normal|leisure"
+         }
+       }
+       \`\`\`
+    
+    5. **save_thought:**
+       \`\`\`json
+       {
+         "action_type": "save_thought",
+         "payload": {
+           "content": "The thought or idea to save",
+           "category": "idea|note|reflection|etc"
+         }
+       }
+       \`\`\`
+    
+    **EXAMPLES:**
+    
+    **Example 1: Grocery List**
+    Input: "running late, need to buy milk, eggs, and bread from the supermarket after I get home"
+    Output:
+    \`\`\`json
+    [
+      {
+        "action_type": "create_list",
+        "payload": {
+          "list_name": "Groceries",
+          "items": ["milk", "eggs", "bread"]
+        }
+      },
+      {
+        "action_type": "create_contextual_reminder",
+        "payload": {
+          "text": "Don't forget to do the grocery shopping",
+          "trigger_context": "user_is_home"
+        }
+      }
+    ]
+    \`\`\`
+    
+    **Example 2: Complex Task**
+    Input: "Email Boss at 8 pm schedule a call for promotion"
+    Output:
+    \`\`\`json
+    [
+      {
+        "action_type": "create_reminder",
+        "payload": {
+          "text": "Email Boss to schedule a call about promotion",
+          "due_time": "20:00:00",
+          "priority": "high",
+          "pre_reminders": [30, 15]
+        }
+      }
+    ]
+    \`\`\`
+    
+    **Example 3: Multiple Items**
+    Input: "Tomorrow: dentist at 2pm, pick up dry cleaning, call mom about weekend plans"
+    Output:
+    \`\`\`json
+    [
+      {
+        "action_type": "create_event",
+        "payload": {
+          "title": "Dentist Appointment",
+          "start_time": "2025-01-21T14:00:00Z",
+          "end_time": "2025-01-21T15:00:00Z",
+          "priority": "high"
+        }
+      },
+      {
+        "action_type": "create_reminder",
+        "payload": {
+          "text": "Pick up dry cleaning",
+          "due_date": "2025-01-21",
+          "priority": "normal"
+        }
+      },
+      {
+        "action_type": "create_reminder",
+        "payload": {
+          "text": "Call mom about weekend plans",
+          "due_date": "2025-01-21",
+          "priority": "normal"
+        }
+      }
+    ]
+    \`\`\`
+    
+    **CRITICAL REQUIREMENTS:**
+    - Output MUST be valid JSON
+    - Output MUST be an array of action objects
+    - Each action MUST have "action_type" and "payload" fields
+    - Dates MUST be in ISO 8601 format
+    - Times MUST be in HH:MM:SS format
+    - Be intelligent about inferring dates (tomorrow, next week, etc.)
+    - Be generous in extracting actions - if unsure, create the action
+    - Preserve the user's original language and intent
+    
+  expected_output: >-
+    A valid JSON array of action objects. Each object must have:
+    - action_type: One of the defined action types
+    - payload: An object with the required fields for that action type
+    
+    The JSON must be parseable and follow the exact structure defined above.
+    Do not include any explanatory text, only the JSON array.
+    
+    Example output format:
+    [
+      {"action_type": "create_reminder", "payload": {...}},
+      {"action_type": "create_list", "payload": {...}}
+    ]
+  
+  agent: apex_unified_brain_orchestrator
+
+process_intelligent_reminders:
+  description: >-
+    Process intelligent, multi-stage reminders for upcoming calendar events based on
+    their priority level. This task runs periodically to ensure users are proactively
+    notified about important events with appropriate lead time.
+    
+    **MISSION:** Act as the Proactive Time Intelligence Agent to generate contextual
+    reminders that help users prepare for and never miss important events.
+    
+    **PHASE 1: FETCH UPCOMING EVENTS**
+    1. Retrieve all calendar events for the user from the next 7 days
+    2. Filter for events that haven't started yet
+    3. Sort by start time (earliest first)
+    
+    **PHASE 2: APPLY MULTI-STAGE REMINDER LOGIC**
+    For each event, check its priority and time until start:
+    
+    **For "critical" priority events:**
+    - 3 days before: Create "Preparation" reminder
+      - Message: "Preparation: [Event Title] is in 3 days. Start preparing now."
+      - Purpose: Give user time to gather materials, prepare presentation, etc.
+    
+    - 1 day before: Create "Final Check" reminder
+      - Message: "Final Check: [Event Title] is tomorrow. Review all materials."
+      - Purpose: Last chance to review and ensure readiness
+    
+    - 2 hours before: Create "Upcoming" reminder
+      - Message: "Upcoming: [Event Title] starts in 2 hours. Get ready."
+      - Purpose: Time to wrap up current work and transition
+    
+    - 15 minutes before: Create "URGENT" notification
+      - Message: "URGENT: [Event Title] starts in 15 minutes!"
+      - Purpose: Final alert, check for lateness risk
+      - Action: Trigger high-priority notification to Talking Orb
+    
+    **For "normal" priority events:**
+    - 1 hour before: Create standard "Upcoming" reminder
+      - Message: "Reminder: [Event Title] starts in 1 hour."
+      - Purpose: Standard notification for regular events
+    
+    **For weekly recurring events:**
+    - Night before (8pm): Create summary reminder
+      - Message: "Tomorrow: Recurring event [Event Title]"
+      - Purpose: Gentle reminder for routine events
+    
+    **PHASE 3: STORE REMINDERS**
+    1. Add generated reminders to the user's reminders list in their vault
+    2. Use the updateState function to persist the new reminders
+    3. Mark reminders with metadata (eventId, priority, urgent flag)
+    
+    **PHASE 4: TRIGGER URGENT NOTIFICATIONS**
+    For any reminders marked as "urgent" (15 minutes before critical events):
+    1. Send notification to the Talking Orb for voice alert
+    2. Check user's current location vs event location
+    3. If lateness risk detected, trigger proactive_travel_management task
+    
+    This task should run every 15 minutes to ensure timely reminder generation.
+  
+  expected_output: >-
+    A confirmation report of reminder processing:
+    
+    **REMINDER PROCESSING REPORT**
+    - Events Analyzed: [count]
+    - Reminders Generated: [count]
+    - Urgent Notifications Triggered: [count]
+    - Breakdown by Priority:
+      - Critical: [count] reminders
+      - Normal: [count] reminders
+      - Recurring: [count] reminders
+    
+    **GENERATED REMINDERS:**
+    [List of reminders with event title, reminder type, and due time]
+    
+    **URGENT ACTIONS:**
+    [List of any urgent notifications sent to Talking Orb or other systems]
+    
+    The report should confirm that all reminders have been successfully stored
+    in the user's vault and any urgent actions have been triggered.
+  
+  agent: apex_unified_brain_orchestrator
+
+conduct_symbiont_review:
+  description: >-
+    On a periodic basis (e.g., quarterly), conduct a "Symbiont Review." This is a
+    performance review of the AI itself, presented to the user to build trust and
+    align on future strategy.
+
+    **YOUR MISSION:**
+    1.  **Analyze AI Performance:**
+        - Use MemoryTool to retrieve all feedback memories from the last 90 days.
+        - Analyze the success rate of proactive suggestions.
+        - Review the outcomes of major tasks (e.g., Alpha Briefs, Weekly Syncs).
+
+    2.  **Identify AI's Strengths & Weaknesses:**
+        - What kind of insights has the user found most helpful?
+        - Where has the AI's advice been less effective?
+        - Are there any blind spots in the AI's understanding?
+
+    3.  **Propose an Improvement Strategy:**
+        - Based on the analysis, propose a clear strategy for how the AI will improve
+          its performance in the next quarter.
+        - Example: "For the next 90 days, I will focus more on finding correlations
+          between your wellness data and financial decisions."
+
+  expected_output: >-
+    A concise, professional "Quarterly Symbiont Review" report in markdown format.
+    It must include:
+    - A summary of AI actions taken (e.g., "Analyzed 500 emails, generated 12 weekly plans").
+    - A transparent assessment of AI performance based on user feedback.
+    - A clear strategy for the AI's focus and improvement for the next quarter.
+    - A final question to the user for alignment: "Do you agree with this new focus?"
+  agent: apex_metacognition_engine
