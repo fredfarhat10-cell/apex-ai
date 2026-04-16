@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apex-trader"
+version = "0.1.0"
+description = "Autonomous trading agent: paper-trading first, crypto/stock/prediction markets"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "requests>=2.32",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
