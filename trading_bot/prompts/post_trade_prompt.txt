@@ -1,0 +1,31 @@
+Analyze this completed trade and provide structured feedback for strategy improvement.
+
+Trade result:
+- Asset: {asset}
+- Entry: {entry}
+- Exit: {exit}
+- Stop loss: {stop_loss}
+- Take profit: {take_profit}
+- P&L: {pnl}
+- Strategy: {strategy}
+- Duration: {duration}
+- Original thesis: {thesis}
+
+Analyze:
+1. Was this a good DECISION (independent of outcome)?
+2. What signals were correct?
+3. What signals failed or were missed?
+4. Was position sizing optimal?
+5. What pattern does this represent?
+6. What rule adjustment would improve future performance?
+
+Output ONLY valid JSON:
+{
+  "decision_quality": "good|bad|neutral",
+  "signals_correct": [],
+  "signals_failed": [],
+  "sizing_optimal": true,
+  "sizing_commentary": "",
+  "pattern": "",
+  "rule_adjustment": ""
+}

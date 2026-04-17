@@ -1,0 +1,19 @@
+Scan the provided market data for high-probability trading opportunities.
+
+Focus on:
+- Breakouts above key resistance with volume confirmation
+- High volume spikes (>2x average) with directional conviction
+- News catalysts with quantifiable price impact
+- Strong trends with recent pullback to support
+- Mean reversion setups at statistical extremes (RSI <30 or >70)
+
+Market regime context:
+- In TRENDING markets: prefer trend-following entries, wider stops
+- In RANGING markets: prefer mean reversion, tighter stops at range boundaries
+
+Return top 3 opportunities only. For each include:
+- Asset and market type
+- Setup type and brief thesis
+- Estimated entry, stop, target levels
+- Confidence score (0-100)
+- Key risk factor that would invalidate the trade
