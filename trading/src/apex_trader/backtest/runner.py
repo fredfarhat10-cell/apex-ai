@@ -180,6 +180,7 @@ class Backtest:
             stop_fill = self._check_stops(broker, self.symbol, bar, ts)
             if stop_fill is not None:
                 fills.append(stop_fill)
+                risk.register_stop_out(self.symbol)
                 if logger:
                     logger.write("fill", {"fill": stop_fill})
                 # FIFO pnl
@@ -230,6 +231,7 @@ class Backtest:
                             fill = broker.execute(decision.order, bar_open, bar_high, bar_low, ts)
                             fills.append(fill)
                             entry_price_by_trade.append((fill.price, fill.quantity))
+                            risk.register_entry(self.symbol)
                             if logger:
                                 logger.write("fill", {"fill": fill})
                         except OrderRejected as e:
@@ -265,6 +267,7 @@ class Backtest:
                                 else:
                                     entry_price_by_trade[0] = (ep, q - take)
                                 remaining -= take
+                            risk.register_exit(self.symbol)
                             if logger:
                                 logger.write("fill", {"fill": fill})
                         except OrderRejected as e:

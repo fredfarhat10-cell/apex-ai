@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -15,8 +16,30 @@ class BrokerConfig:
     fee_bps: float = 10.0
     slippage_bps: float = 5.0
     allow_short: bool = False
-    spread_bps: float = 0.0          # half-spread added to buy / subtracted from sell (opt-in)
-    min_volume_multiple: float = 0.0 # if > 0, reject if order notional > multiple × bar volume × price
+    spread_bps: float = 0.0                 # half-spread added to buy / subtracted from sell
+    min_volume_multiple: float = 0.0        # if > 0, reject if order > multiple × bar volume
+    # --- Realistic execution layer (all opt-in; zero = disabled) ----------------
+    # Adverse price moves scale with bar range: slip += coeff × (bar_range / open).
+    # A typical liquid venue sees ~0.5-1.0.  Disabled by default to preserve
+    # backward-compatibility with zero-friction unit tests.
+    volatility_slippage_coeff: float = 0.0
+    # Square-root market-impact model (Almgren-style).  Extra slippage bps =
+    # coeff × sqrt(order_notional / bar_notional) × 10_000.
+    market_impact_coeff: float = 0.0
+    # Maximum slippage cap so a thin bar can't produce absurd prices.
+    max_slippage_bps: float = 200.0
+
+    @classmethod
+    def realistic(cls) -> "BrokerConfig":
+        """Institutional-friction profile suitable for production backtests."""
+        return cls(
+            fee_bps=10.0,
+            slippage_bps=3.0,
+            spread_bps=2.0,
+            volatility_slippage_coeff=0.6,
+            market_impact_coeff=0.1,
+            min_volume_multiple=10.0,
+        )
 
 
 @dataclass
@@ -28,8 +51,30 @@ class PaperBroker:
         if self.config is None:
             self.config = BrokerConfig()
 
-    def _apply_slippage(self, side: Side, ref_price: float) -> float:
-        slip = self.config.slippage_bps / 10_000.0
+    def _effective_slippage_bps(
+        self, ref_price: float, bar_high: float, bar_low: float,
+        order_notional: float, bar_volume: float,
+    ) -> float:
+        """Combine base + volatility + market-impact into a single bps figure."""
+        bps = self.config.slippage_bps
+        if self.config.volatility_slippage_coeff > 0 and ref_price > 0:
+            bar_range_pct = max(0.0, (bar_high - bar_low) / ref_price)
+            bps += self.config.volatility_slippage_coeff * bar_range_pct * 10_000.0
+        if self.config.market_impact_coeff > 0 and bar_volume > 0 and ref_price > 0:
+            bar_notional = bar_volume * ref_price
+            if bar_notional > 0:
+                fraction = order_notional / bar_notional
+                bps += self.config.market_impact_coeff * math.sqrt(max(fraction, 0.0)) * 10_000.0
+        return min(bps, self.config.max_slippage_bps)
+
+    def _apply_slippage(
+        self, side: Side, ref_price: float, bar_high: float, bar_low: float,
+        order_notional: float, bar_volume: float,
+    ) -> float:
+        slip_bps = self._effective_slippage_bps(
+            ref_price, bar_high, bar_low, order_notional, bar_volume
+        )
+        slip = slip_bps / 10_000.0
         spread = self.config.spread_bps / 10_000.0
         if side is Side.BUY:
             return ref_price * (1.0 + slip + spread)
@@ -60,8 +105,11 @@ class PaperBroker:
             raise OrderRejected("quantity must be positive")
         self._check_liquidity(order, bar_volume, bar_open)
 
+        order_notional = order.quantity * bar_open
         if order.order_type is OrderType.MARKET:
-            price = self._apply_slippage(order.side, bar_open)
+            price = self._apply_slippage(
+                order.side, bar_open, bar_high, bar_low, order_notional, bar_volume
+            )
         elif order.order_type is OrderType.LIMIT:
             if order.limit_price is None:
                 raise OrderRejected("limit order missing limit_price")

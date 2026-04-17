@@ -92,6 +92,30 @@ def test_fallback_on_short_history():
     assert state.trend_strength == 0.0
 
 
+def test_is_chop_true_when_low_trend_high_vol():
+    state = RegimeState(
+        trend="ranging", volatility="high_vol", label="ranging_high_vol",
+        trend_strength=0.10, vol_percentile=0.80, atr=1.0,
+    )
+    assert state.is_chop is True
+
+
+def test_is_chop_false_in_trending_high_vol():
+    state = RegimeState(
+        trend="trending", volatility="high_vol", label="trending_high_vol",
+        trend_strength=0.80, vol_percentile=0.80, atr=1.0,
+    )
+    assert state.is_chop is False
+
+
+def test_is_chop_false_in_quiet_range():
+    state = RegimeState(
+        trend="ranging", volatility="low_vol", label="ranging_low_vol",
+        trend_strength=0.10, vol_percentile=0.20, atr=1.0,
+    )
+    assert state.is_chop is False
+
+
 def test_label_matches_trend_volatility():
     detector = RegimeDetector()
     for bars_fn in (_trending_bars, _ranging_bars, _volatile_bars):

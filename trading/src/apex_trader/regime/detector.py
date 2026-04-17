@@ -20,6 +20,15 @@ class RegimeState:
     vol_percentile: float  # 0–1  (1 = most volatile in lookback window)
     atr: float             # raw ATR value for sizing
 
+    @property
+    def is_chop(self) -> bool:
+        """True when price is volatile but directionless — whipsaw territory.
+
+        Both momentum and mean-reversion strategies underperform here; callers
+        should scale confidence down or stand aside.
+        """
+        return self.trend_strength < 0.25 and self.vol_percentile >= 0.70
+
 
 class RegimeDetector:
     """Classifies the current market into one of four regime labels.

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from ..models import Order, Portfolio, Side
+from .exposure import ExposureEngine, ExposureGroup
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -21,6 +22,11 @@ class RiskConfig:
     max_total_drawdown_pct: float = 0.12    # kill-switch: halt all trading
     max_gross_exposure_pct: float = 1.00    # sum of |position notional| / equity
     min_risk_reward: float = 2.0            # reject trades with R:R below this
+    # --- Stability layer (all opt-in; zero = disabled) ---
+    min_hold_bars: int = 0                  # minimum bars a position must be held before voluntary exit
+    post_stop_cooldown_bars: int = 0        # bars to block re-entry on a symbol after a stop-out
+    # --- Correlation/sector exposure ---
+    exposure_groups: list[ExposureGroup] = field(default_factory=list)
 
 
 @dataclass
@@ -37,6 +43,18 @@ class RiskManager:
         self._day_start_equity: float = starting_equity
         self._peak_equity: float = starting_equity
         self._halted: bool = False
+        self._bar_index: int = 0
+        self._entry_bar: dict[str, int] = {}            # symbol -> bar index of last entry
+        self._cooldown_until: dict[str, int] = {}       # symbol -> bar index when cooldown ends
+        self._exposure = ExposureEngine(groups=list(self.config.exposure_groups))
+        self._last_prices: dict[str, float] = {}
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+    def update_prices(self, prices: dict[str, float]) -> None:
+        """Feed the latest per-symbol price for group-exposure pricing."""
+        self._last_prices.update(prices)
 
     def on_bar(self, ts: datetime, equity: float) -> None:
         d = ts.date()
@@ -49,6 +67,7 @@ class RiskManager:
             total_dd = 1.0 - equity / self._peak_equity
             if total_dd >= self.config.max_total_drawdown_pct:
                 self._halted = True
+        self._bar_index += 1
 
     def halted(self) -> bool:
         return self._halted
@@ -59,6 +78,37 @@ class RiskManager:
         dd = 1.0 - equity / self._day_start_equity
         return dd >= self.config.max_daily_drawdown_pct
 
+    # ------------------------------------------------------------------
+    # Stability hooks — called by the runner on entry/stop events
+    # ------------------------------------------------------------------
+    def register_entry(self, symbol: str) -> None:
+        self._entry_bar[symbol] = self._bar_index
+
+    def register_stop_out(self, symbol: str) -> None:
+        self._cooldown_until[symbol] = self._bar_index + self.config.post_stop_cooldown_bars
+        self._entry_bar.pop(symbol, None)
+
+    def register_exit(self, symbol: str) -> None:
+        self._entry_bar.pop(symbol, None)
+
+    def can_enter(self, symbol: str) -> tuple[bool, str]:
+        cd = self._cooldown_until.get(symbol, 0)
+        if self._bar_index < cd:
+            return False, f"cooldown {cd - self._bar_index} bars remain"
+        return True, "ok"
+
+    def can_exit_voluntarily(self, symbol: str) -> bool:
+        """Enforce min-hold for discretionary exits (stops/TPs bypass this)."""
+        if self.config.min_hold_bars <= 0:
+            return True
+        entry = self._entry_bar.get(symbol)
+        if entry is None:
+            return True
+        return (self._bar_index - entry) >= self.config.min_hold_bars
+
+    # ------------------------------------------------------------------
+    # Sizing
+    # ------------------------------------------------------------------
     def size_long(self, equity: float, price: float, stop_price: float | None) -> float:
         """Return quantity to buy based on risk-per-trade and position cap."""
         if price <= 0 or equity <= 0:
@@ -78,12 +128,7 @@ class RiskManager:
         atr_multiplier_tp: float = 4.0,
         atr_period: int = 14,
     ) -> tuple[float, float, float]:
-        """Return (quantity, stop_price, take_profit) sized from ATR-based stops.
-
-        Stop = entry - atr_multiplier_stop × ATR
-        TP   = entry + atr_multiplier_tp × ATR
-        Quantity is then sized so the stop distance = risk_per_trade_pct of equity.
-        """
+        """Return (quantity, stop_price, take_profit) sized from ATR-based stops."""
         from ..indicators.core import atr as compute_atr
         close = bars["close"]
         entry = float(close.iloc[-1])
@@ -104,6 +149,9 @@ class RiskManager:
             return None
         return reward / risk
 
+    # ------------------------------------------------------------------
+    # Gate every order
+    # ------------------------------------------------------------------
     def evaluate(
         self, order: Order, portfolio: Portfolio, equity: float, ref_price: float
     ) -> RiskDecision:
@@ -117,6 +165,10 @@ class RiskManager:
         pos = portfolio.position(order.symbol)
 
         if order.side is Side.BUY:
+            ok, why = self.can_enter(order.symbol)
+            if not ok:
+                return RiskDecision(False, None, f"post-stop {why}")
+
             notional = order.quantity * ref_price
             cap = equity * self.config.max_position_pct
             new_notional = (pos.quantity + order.quantity) * ref_price
@@ -133,6 +185,22 @@ class RiskManager:
             if gross_after > equity * self.config.max_gross_exposure_pct + 1e-9:
                 return RiskDecision(False, None, "gross exposure cap exceeded")
 
+            if self._exposure.groups:
+                # Use cached last prices where available, fall back to ref_price.
+                prices = {s: self._last_prices.get(s, ref_price) for s in portfolio.positions}
+                prices[order.symbol] = ref_price
+                ok, why, headroom = self._exposure.check_order(
+                    order.symbol, notional, portfolio, prices, equity
+                )
+                if not ok:
+                    if headroom <= 0:
+                        return RiskDecision(False, None, why)
+                    # Scale the order down to fit inside the group cap
+                    scaled_qty = max(0.0, headroom / ref_price)
+                    if scaled_qty <= 0:
+                        return RiskDecision(False, None, why)
+                    order = Order(**{**order.__dict__, "quantity": scaled_qty})
+
             if order.stop_loss is None:
                 order = Order(**{**order.__dict__, "stop_loss": ref_price * (1.0 - self.config.stop_loss_pct)})
 
@@ -141,5 +209,10 @@ class RiskManager:
                 order = Order(**{**order.__dict__, "quantity": pos.quantity})
             if order.quantity <= 0:
                 return RiskDecision(False, None, "no position to sell")
+            # Min-hold enforcement only blocks voluntary exits.  The backtest
+            # runner bypasses this check for stop/TP triggers by calling
+            # ``broker.execute`` directly in ``_check_stops``.
+            if not self.can_exit_voluntarily(order.symbol):
+                return RiskDecision(False, None, "min-hold: position too young")
 
         return RiskDecision(True, order, "ok")
