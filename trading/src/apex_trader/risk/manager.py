@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from ..models import Order, Portfolio, Side
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 @dataclass
@@ -65,6 +69,30 @@ class RiskManager:
         qty_by_risk = risk_budget / per_unit_risk
         qty_by_cap = (equity * self.config.max_position_pct) / price
         return max(0.0, min(qty_by_risk, qty_by_cap))
+
+    def size_dynamic(
+        self,
+        equity: float,
+        bars: "pd.DataFrame",
+        atr_multiplier_stop: float = 2.0,
+        atr_multiplier_tp: float = 4.0,
+        atr_period: int = 14,
+    ) -> tuple[float, float, float]:
+        """Return (quantity, stop_price, take_profit) sized from ATR-based stops.
+
+        Stop = entry - atr_multiplier_stop × ATR
+        TP   = entry + atr_multiplier_tp × ATR
+        Quantity is then sized so the stop distance = risk_per_trade_pct of equity.
+        """
+        from ..indicators.core import atr as compute_atr
+        close = bars["close"]
+        entry = float(close.iloc[-1])
+        a = compute_atr(bars["high"], bars["low"], close, atr_period)
+        atr_val = float(a.dropna().iloc[-1]) if not a.dropna().empty else entry * 0.01
+        stop = entry - atr_multiplier_stop * atr_val
+        tp = entry + atr_multiplier_tp * atr_val
+        qty = self.size_long(equity, entry, stop)
+        return qty, stop, tp
 
     def risk_reward(self, entry: float, stop: float, take_profit: float | None) -> float | None:
         """Compute R:R for a long trade. Returns None if take_profit not set."""

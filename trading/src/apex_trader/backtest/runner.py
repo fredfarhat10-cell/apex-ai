@@ -15,6 +15,84 @@ from .metrics import PerfSummary, summarize
 
 
 @dataclass
+class WalkForwardConfig:
+    """Controls the train/test split for walk-forward validation."""
+
+    train_bars: int = 200   # bars used as context (warmup) for each fold
+    test_bars: int = 50     # bars on which performance is evaluated per fold
+    step_bars: int = 50     # advance this many bars between folds
+
+
+@dataclass
+class WalkForwardResult:
+    fold_results: list[BacktestResult]
+    combined_equity: pd.Series
+    combined_summary: PerfSummary
+
+
+def walk_forward(
+    symbol: str,
+    bars: pd.DataFrame,
+    strategy: Strategy,
+    wf_config: WalkForwardConfig | None = None,
+    starting_cash: float = 10_000.0,
+    broker_config: BrokerConfig | None = None,
+    risk_config: RiskConfig | None = None,
+) -> WalkForwardResult:
+    """Strict walk-forward backtest.
+
+    For each fold:
+      - `train_bars` bars are available as context (warmup only; no in-sample
+        fitting is possible here since strategies are rule-based).
+      - Performance is evaluated only on the next `test_bars` bars.
+      - Folds advance by `step_bars`, which may overlap the test windows.
+
+    This prevents look-ahead bias from training on the full dataset and gives
+    a realistic out-of-sample performance picture.
+    """
+    cfg = wf_config or WalkForwardConfig()
+    broker_cfg = broker_config or BrokerConfig()
+    risk_cfg = risk_config or RiskConfig()
+
+    total = len(bars)
+    fold_start = cfg.train_bars  # first test window begins after initial warmup
+    fold_results: list[BacktestResult] = []
+    equity_chunks: list[pd.Series] = []
+
+    while fold_start + cfg.test_bars <= total:
+        window_bars = bars.iloc[max(0, fold_start - cfg.train_bars): fold_start + cfg.test_bars]
+        bt = Backtest(
+            symbol=symbol,
+            bars=window_bars,
+            strategy=strategy,
+            starting_cash=starting_cash,
+            broker_config=broker_cfg,
+            risk_config=risk_cfg,
+            warmup_bars=cfg.train_bars,
+        )
+        result = bt.run()
+        fold_results.append(result)
+        # Only keep the out-of-sample (test) slice of the equity curve
+        test_eq = result.equity_curve.iloc[-cfg.test_bars:]
+        equity_chunks.append(test_eq)
+        fold_start += cfg.step_bars
+
+    if not fold_results:
+        empty_eq = pd.Series(dtype=float)
+        return WalkForwardResult([], empty_eq, summarize(empty_eq, []))
+
+    combined_equity = pd.concat(equity_chunks)
+    all_pnls: list[float] = [p for r in fold_results for p in r.trade_pnls]
+    combined_summary = summarize(combined_equity, all_pnls)
+
+    return WalkForwardResult(
+        fold_results=fold_results,
+        combined_equity=combined_equity,
+        combined_summary=combined_summary,
+    )
+
+
+@dataclass
 class BacktestResult:
     equity_curve: pd.Series
     fills: list[Fill]

@@ -15,6 +15,8 @@ class BrokerConfig:
     fee_bps: float = 10.0
     slippage_bps: float = 5.0
     allow_short: bool = False
+    spread_bps: float = 0.0          # half-spread added to buy / subtracted from sell (opt-in)
+    min_volume_multiple: float = 0.0 # if > 0, reject if order notional > multiple × bar volume × price
 
 
 @dataclass
@@ -28,11 +30,35 @@ class PaperBroker:
 
     def _apply_slippage(self, side: Side, ref_price: float) -> float:
         slip = self.config.slippage_bps / 10_000.0
-        return ref_price * (1.0 + slip) if side is Side.BUY else ref_price * (1.0 - slip)
+        spread = self.config.spread_bps / 10_000.0
+        if side is Side.BUY:
+            return ref_price * (1.0 + slip + spread)
+        return ref_price * (1.0 - slip - spread)
 
-    def execute(self, order: Order, bar_open: float, bar_high: float, bar_low: float, ts: datetime) -> Fill:
+    def _check_liquidity(self, order: Order, bar_volume: float, price: float) -> None:
+        """Reject orders that would consume an implausibly large fraction of bar volume."""
+        if self.config.min_volume_multiple <= 0:
+            return
+        if bar_volume <= 0:
+            return
+        order_volume = order.quantity
+        if order_volume > bar_volume * self.config.min_volume_multiple:
+            raise OrderRejected(
+                f"liquidity: order {order_volume:.4f} > {self.config.min_volume_multiple}× bar volume {bar_volume:.4f}"
+            )
+
+    def execute(
+        self,
+        order: Order,
+        bar_open: float,
+        bar_high: float,
+        bar_low: float,
+        ts: datetime,
+        bar_volume: float = 0.0,
+    ) -> Fill:
         if order.quantity <= 0:
             raise OrderRejected("quantity must be positive")
+        self._check_liquidity(order, bar_volume, bar_open)
 
         if order.order_type is OrderType.MARKET:
             price = self._apply_slippage(order.side, bar_open)
