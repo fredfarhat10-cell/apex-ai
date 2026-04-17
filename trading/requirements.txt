@@ -2,4 +2,6 @@ numpy>=1.26
 pandas>=2.2
 requests>=2.32
 pyyaml>=6.0
+pydantic>=2.7
+anthropic>=0.40
 pytest>=8.0

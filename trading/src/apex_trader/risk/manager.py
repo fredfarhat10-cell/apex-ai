@@ -8,12 +8,15 @@ from ..models import Order, Portfolio, Side
 
 @dataclass
 class RiskConfig:
+    # Conservative objective: 5-15%/mo target, max DD ≤ 12-15%, risk/trade 0.5-2%.
     max_position_pct: float = 0.10          # cap per-position notional as % of equity
     risk_per_trade_pct: float = 0.01        # $ risked per trade as % of equity (for stop-sizing)
+    max_risk_per_trade_pct: float = 0.02    # hard ceiling — rejected above this
     stop_loss_pct: float = 0.03             # default stop distance if none provided
-    max_daily_drawdown_pct: float = 0.05    # halt trading for the day if breached
-    max_total_drawdown_pct: float = 0.20    # kill-switch: halt all trading
+    max_daily_drawdown_pct: float = 0.03    # halt trading for the day if breached
+    max_total_drawdown_pct: float = 0.12    # kill-switch: halt all trading
     max_gross_exposure_pct: float = 1.00    # sum of |position notional| / equity
+    min_risk_reward: float = 2.0            # reject trades with R:R below this
 
 
 @dataclass
@@ -62,6 +65,16 @@ class RiskManager:
         qty_by_risk = risk_budget / per_unit_risk
         qty_by_cap = (equity * self.config.max_position_pct) / price
         return max(0.0, min(qty_by_risk, qty_by_cap))
+
+    def risk_reward(self, entry: float, stop: float, take_profit: float | None) -> float | None:
+        """Compute R:R for a long trade. Returns None if take_profit not set."""
+        if take_profit is None:
+            return None
+        risk = entry - stop
+        reward = take_profit - entry
+        if risk <= 0:
+            return None
+        return reward / risk
 
     def evaluate(
         self, order: Order, portfolio: Portfolio, equity: float, ref_price: float
