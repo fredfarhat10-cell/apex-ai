@@ -14,6 +14,12 @@ log = logging.getLogger(__name__)
 _DEFAULT_REBALANCE_DAYS = 7
 _MIN_WEIGHT = 0.05    # floor so no strategy is fully deactivated
 _BLEND_ALPHA = 0.30   # EWA: new_weight = α × fresh + (1-α) × old
+# Evolution: after this many consecutive rebalances with Sharpe <= suppression
+# threshold, a strategy is hard-suppressed (weight forced to 0 regardless of
+# min_weight floor).  Distinct from the floor so that legitimate under-performers
+# still collect data, but chronically broken ones get retired.
+_DEFAULT_SUPPRESSION_THRESHOLD = 0.0
+_DEFAULT_SUPPRESSION_STRIKES = 3
 
 
 class MetaLearner:
@@ -38,6 +44,8 @@ class MetaLearner:
         blend_alpha: float = _BLEND_ALPHA,
         performance_window: int = 30,
         weights_path: str | Path | None = None,
+        suppression_threshold: float = _DEFAULT_SUPPRESSION_THRESHOLD,
+        suppression_strikes: int = _DEFAULT_SUPPRESSION_STRIKES,
     ) -> None:
         self._names = list(strategy_names)
         self._min_weight = min_weight
@@ -46,6 +54,10 @@ class MetaLearner:
         self._performance_window = performance_window
         self._weights_path = Path(weights_path) if weights_path else None
         self._last_rebalance: datetime | None = None
+        self._suppression_threshold = suppression_threshold
+        self._suppression_strikes = suppression_strikes
+        self._strike_count: dict[str, int] = {n: 0 for n in self._names}
+        self._suppressed: set[str] = set()
 
         # Initialise equal weights unless given or loaded from file
         if self._weights_path and self._weights_path.exists():
@@ -60,6 +72,15 @@ class MetaLearner:
     def get_weights(self) -> dict[str, float]:
         """Return current strategy weights (always sums to 1)."""
         return dict(self._weights)
+
+    def suppressed(self) -> set[str]:
+        """Names of strategies currently hard-suppressed (weight forced to 0)."""
+        return set(self._suppressed)
+
+    def reinstate(self, name: str) -> None:
+        """Lift suppression — used after a mutation produces a new candidate."""
+        self._suppressed.discard(name)
+        self._strike_count[name] = 0
 
     def update_weights(
         self,
@@ -101,24 +122,42 @@ class MetaLearner:
         raw: dict[str, float] = {}
         for name in self._names:
             sharpe = monitor.strategy_sharpe(name)
-            raw[name] = max(sharpe, 0.0)  # floor negative at 0
+            # Strike accounting for evolutionary suppression
+            if sharpe <= self._suppression_threshold:
+                self._strike_count[name] = self._strike_count.get(name, 0) + 1
+                if self._strike_count[name] >= self._suppression_strikes:
+                    self._suppressed.add(name)
+                    log.warning("MetaLearner suppressing %s after %d strikes (sharpe=%.3f)",
+                                name, self._strike_count[name], sharpe)
+            else:
+                self._strike_count[name] = 0
+            raw[name] = 0.0 if name in self._suppressed else max(sharpe, 0.0)
 
         total = sum(raw.values())
         if total <= 0:
-            # All strategies underwater → equal weights
-            return {n: 1.0 / len(self._names) for n in self._names}
+            # All strategies underwater → equal weights across the non-suppressed set
+            active = [n for n in self._names if n not in self._suppressed]
+            if not active:
+                return {n: 1.0 / len(self._names) for n in self._names}
+            return {n: (1.0 / len(active) if n in active else 0.0) for n in self._names}
 
         normalised = {n: v / total for n, v in raw.items()}
         return self._apply_floor(normalised)
 
     def _apply_floor(self, weights: dict[str, float]) -> dict[str, float]:
-        """Ensure no strategy drops below `min_weight`, then re-normalise."""
-        floored = {n: max(w, self._min_weight) for n, w in weights.items()}
+        """Ensure non-suppressed strategies stay at ``min_weight`` or above."""
+        floored = {
+            n: 0.0 if n in self._suppressed else max(w, self._min_weight)
+            for n, w in weights.items()
+        }
         return self._normalise(floored)
 
     def _blend(self, fresh: dict[str, float]) -> dict[str, float]:
         blended = {}
         for name in self._names:
+            if name in self._suppressed:
+                blended[name] = 0.0  # suppression bypasses the EWA blend
+                continue
             old = self._weights.get(name, 1.0 / len(self._names))
             new = fresh.get(name, self._min_weight)
             blended[name] = self._blend_alpha * new + (1.0 - self._blend_alpha) * old

@@ -8,7 +8,14 @@ import pandas as pd
 from .base import Direction, SignalResult, SignalStrategy
 
 if TYPE_CHECKING:
-    pass
+    from ..regime.detector import RegimeState
+
+
+# Chop penalty: whipsaw markets hurt both momentum and mean-reversion.  We don't
+# zero the signal (occasionally a strong multi-strat consensus deserves to fire
+# through chop) — we scale confidence so it has to be genuinely strong to clear
+# ``min_confidence``.
+_CHOP_CONFIDENCE_SCALE = 0.5
 
 
 @dataclass
@@ -51,6 +58,7 @@ class EnsembleCombiner:
         bars: pd.DataFrame,
         regime: str,
         weights: dict[str, float] | None = None,
+        regime_state: "RegimeState | None" = None,
     ) -> EnsembleResult:
         """Run all strategies and return weighted aggregate signal.
 
@@ -101,6 +109,11 @@ class EnsembleCombiner:
 
         contributing = [(r.strategy, r.confidence) for r, _ in group]
 
+        chop_note = ""
+        if regime_state is not None and regime_state.is_chop:
+            weighted_conf *= _CHOP_CONFIDENCE_SCALE
+            chop_note = f" [chop ×{_CHOP_CONFIDENCE_SCALE}]"
+
         if weighted_conf < self.min_confidence:
             return EnsembleResult(
                 direction="flat",
@@ -108,7 +121,7 @@ class EnsembleCombiner:
                 risk_reward=None,
                 regime=regime,
                 contributing=contributing,
-                rationale=f"confidence {weighted_conf:.2f} below threshold {self.min_confidence}",
+                rationale=f"confidence {weighted_conf:.2f} below threshold {self.min_confidence}{chop_note}",
             )
 
         return EnsembleResult(
@@ -117,5 +130,5 @@ class EnsembleCombiner:
             risk_reward=weighted_rr,
             regime=regime,
             contributing=contributing,
-            rationale=f"ensemble {winning_dir}: conf={weighted_conf:.2f}, rr={weighted_rr}",
+            rationale=f"ensemble {winning_dir}: conf={weighted_conf:.2f}, rr={weighted_rr}{chop_note}",
         )
