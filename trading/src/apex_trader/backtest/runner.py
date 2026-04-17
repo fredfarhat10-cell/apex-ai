@@ -122,14 +122,21 @@ class Backtest:
 
         stop = pos.stop_loss
         tp = pos.take_profit
+        bar_open = float(bar["open"])
         low = float(bar["low"])
         high = float(bar["high"])
 
         triggered: tuple[str, float] | None = None
         if stop is not None and low <= stop:
-            triggered = ("stop_loss", stop)
+            # Gap-down: if bar opens below the stop, realistic fill is at bar_open
+            # (worse than stop).  Otherwise the stop was touched intrabar → fill at stop.
+            fill_price = min(stop, bar_open)
+            triggered = ("stop_loss", fill_price)
         elif tp is not None and high >= tp:
-            triggered = ("take_profit", tp)
+            # Gap-up: if bar opens above TP, realistic fill is at bar_open (better than tp).
+            # Otherwise TP was touched intrabar → fill at tp.
+            fill_price = max(tp, bar_open)
+            triggered = ("take_profit", fill_price)
 
         if triggered is None:
             return None
@@ -142,7 +149,6 @@ class Backtest:
             order_type=OrderType.MARKET,
             reason=reason,
         )
-        # Fill at the trigger price (with slippage inside execute()).
         return broker.execute(order, bar_open=ref_price, bar_high=high, bar_low=low, ts=ts)
 
     def run(self) -> BacktestResult:

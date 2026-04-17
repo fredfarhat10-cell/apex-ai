@@ -66,6 +66,12 @@ class MeanReversionStrategy:
             rsi_score if rsi_extreme else bb_score
         )
 
+        # Degenerate case: a perfectly flat market makes lower_bb == mid == close, so
+        # `bb_touch` is True even though there is no real mean-reversion setup.
+        # Detect flat market via zero Bollinger bandwidth and emit FLAT.
+        if abs(mid - lower) < 1e-9:
+            return SignalResult("flat", 0.0, None, self.name, "zero-bandwidth flat market")
+
         # Regime penalty: weaken in trending markets (mean reversion fails in strong trends)
         if regime not in self.active_regimes:
             base_score *= 0.4
