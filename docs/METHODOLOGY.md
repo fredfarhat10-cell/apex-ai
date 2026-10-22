@@ -31,13 +31,29 @@ updates `trade_outcomes.thesis_correct` and the lesson fields. Those belong to t
 * There is a gap of up to 5 minutes between entry and the first fully post-entry 5m bar, which is not evaluated.
 
 ## Costs (configurable)
-* `AQ_FEE_BPS_PER_SIDE` (default **10 bps**) and `AQ_SLIPPAGE_BPS_PER_SIDE` (default **10 bps**) are applied to
-  entry and exit notional. Round trip ≈ **0.40 %**.
-* Rationale: 10 bps matches the base taker fee of low-cost venues, and 10 bps of slippage is generous for
-  BTC/ETH-size orders in liquid markets.
-* **These are not precise.** Retail Coinbase taker fees can be **0.4–1.2 %** per side, so if you would execute
-  there, raise the fee setting. Funding and borrow costs for shorts are **not modelled**.
-* Costs are always shown as *estimated*, separately from gross P/L.
+* **Fees**: `AQ_FEE_BPS_PER_SIDE` (default **10 bps**), applied to entry and exit notional. Retail Coinbase taker
+  fees can be **40–120 bps** per side; raise this if that is your venue.
+* **Slippage, from the order book**: at decision time the engine sizes a provisional position, fetches the live L2
+  book (Coinbase, then Binance), and walks it for that notional on both the entry and the exit side. The VWAP vs mid
+  (which includes half the spread) gives bps per side, with a floor of `AQ_MIN_SLIPPAGE_BPS_PER_SIDE` (2 bps).
+  * The *entry-time* book is used for the exit estimate as well. Exit-time books are not available historically.
+  * If the book is unavailable or too thin, the flat `AQ_SLIPPAGE_BPS_PER_SIDE` (10 bps) is used and labelled.
+* **Short funding**: paper shorts are modelled as perpetual-futures shorts.
+  * The latest Binance funding rate is held constant over the horizon.
+  * Shorts pay when the rate is negative. When it is positive, the funding **income is ignored** (conservative).
+  * Without funding data, `AQ_SHORT_BORROW_BPS_PER_DAY` (5 bps/day) is charged.
+  * The funding cost reduces the planned net reward/risk and is charged for the actual holding time at exit.
+* The exact cost model used is stored per trade (`paper_trades.costs_json`) and shown in the UI. Costs are always
+  reported as *estimates*, separately from gross P/L.
+
+## Experience memory
+* At decision time the system retrieves past paper trades in the same direction whose outcome was known **before**
+  the decision. Similarity is a scaled distance over `z_24h`, `volume_ratio_24h`, `rsi_14`, `vol_regime_ratio`,
+  `dist_sma20_atr` and `rel_perf_vs_btc_24h_pct`, plus a penalty when the regime label differs.
+* The Scout and Devil's Advocate see the summary; the snapshot is stored in `investigations.memory_json`.
+* Memory carries challenge weight only with ≥ `AQ_MEMORY_MIN_SIMILAR` (5) similar trades. Then a negative
+  expectancy becomes a *major* Devil's Advocate finding. Below that it is informational only. It never changes
+  rules or parameters.
 
 ## Position sizing
 `units = (equity × 0.5 %) / (|entry − stop| + entry × round-trip cost) × FX`, then capped so that total exposure

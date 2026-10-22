@@ -139,6 +139,7 @@ def sma_baseline(btc_1h: list[Candle], start: datetime, s, period: int = 50) -> 
         return {"available": False, "reason": "Insufficient BTC history since benchmark start"}
     cost = (s.fee_bps_per_side + s.slippage_bps_per_side) / 10_000
     value, pos, switches, in_market = 1.0, 0, 0, 0
+    curve = [(times[idx0].isoformat(), 0.0)]
     for i in range(idx0, len(closes) - 1):
         sma = sum(closes[i - period + 1:i + 1]) / period
         target = 1 if closes[i] > sma else 0
@@ -149,8 +150,10 @@ def sma_baseline(btc_1h: list[Candle], start: datetime, s, period: int = 50) -> 
         if pos:
             value *= closes[i + 1] / closes[i]
             in_market += 1
+        curve.append((times[i + 1].isoformat(), (value - 1) * 100))
     hours = len(closes) - 1 - idx0
     return {"available": True, "return_pct_usd": (value - 1) * 100, "switches": switches, "hours": hours,
+            "curve": curve,
             "time_in_market_pct": in_market / hours * 100 if hours else None,
             "rule": f"Long BTC when hourly close > SMA{period}, else cash; {cost * 1e4:.0f} bps per switch",
             "note": "USD price return (GBP/USD FX not applied to this baseline)."}

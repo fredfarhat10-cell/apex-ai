@@ -61,7 +61,7 @@ interfaces that exist so these components can be added are listed for each layer
 |---|---|
 | 0 (tonight) | Scout, Devil's Advocate, risk engine, paper fund, ledger, learning loop, dashboard |
 | 1 | Run the live paper fund for 4–8 weeks unchanged; collect ≥ 50 investigations; add PostgreSQL; daily reports |
-| 2 | Experience Memory retrieval; Liquidity agent (order-book slippage); Research Confidence calibration curves |
+| 2 | ~~Experience Memory retrieval~~ (done: v0.2); ~~order-book slippage + short funding~~ (done: v0.2); Research Confidence calibration curves |
 | 3 | News Scout on a licensed feed; YouTube-based Viral Scout; Source Credibility from ledger history |
 | 4 | Market Structure (funding/OI), On-chain Analyst; walk-forward Strategy Evaluator |
 | 5 | Prediction-market module (research only; see white paper §20) |

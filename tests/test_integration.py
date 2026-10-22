@@ -117,7 +117,7 @@ def test_monitor_cycle_uses_filters_and_cooldown(make_engine):
     # Cooldown prevents re-investigating the same asset within the window.
     assert {r["asset"] for r in eng.db.all("SELECT asset FROM investigations")} <= set(run["triggers_json"])
     assert n2 == n1
-    assert eng.db.one("SELECT COUNT(*) n FROM equity_snapshots")["n"] == 2
+    assert eng.db.one("SELECT COUNT(*) n FROM equity_snapshots")["n"] >= 2  # monitor runs + trade open
 
 
 def test_manual_close_uses_real_price(make_engine):
@@ -128,3 +128,27 @@ def test_manual_close_uses_real_price(make_engine):
     assert res["outcome"]["exit_reason"] == "MANUAL"
     assert abs(res["outcome"]["exit_price_usd"] - provider.paths["ETH"].price_at(clock.now())) < 1e-9
     assert res["outcome"]["thesis_correct"] == "UNDETERMINED"
+
+
+def test_monitor_skips_assets_with_open_positions(make_engine):
+    eng, clock, _ = make_engine(after_drift=0.0, trigger_volume_ratio_4h=1.5)
+    assert eng.run_investigation("ETH")["final_decision"] == "TRADE"
+    run = eng.monitor_cycle()
+    assert "ETH" in run["triggers_json"]
+    assert all(i["asset"] != "ETH" for i in run["investigations_json"])
+
+
+def test_arena_read_model(make_engine):
+    eng, clock, _ = make_engine(after_drift=0.006)
+    eng.monitor_cycle()
+    eng.run_investigation("ETH")
+    for _ in range(6):
+        clock.advance(hours=1)
+        eng.monitor_cycle()
+    a = eng.arena()
+    ids = {s["id"] for s in a["series"]}
+    assert {"ai", "hodl", "sma"} <= ids
+    assert len(next(s for s in a["series"] if s["id"] == "ai")["points"]) >= 3
+    assert {r["id"] for r in a["leaderboard"]} == {"ai", "hodl", "sma"}
+    returns = [r["return_pct"] for r in a["leaderboard"] if r["return_pct"] is not None]
+    assert returns == sorted(returns, reverse=True)

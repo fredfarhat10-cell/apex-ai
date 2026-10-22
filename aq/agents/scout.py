@@ -34,6 +34,8 @@ Rules:
 - NO_TRADE is a perfectly good answer. Only propose a trade when the evidence supports a specific, testable thesis.
 - Stops/targets are expressed as multiples of ATR(14, 1h); the system computes prices deterministically.
 - horizon_hours must be one of 6, 12, 24, 48, 72.
+- experience_memory lists past paper trades from similar situations (outcomes known before now). Treat it as
+  weak evidence when the sample is small; never treat one or two past results as proof.
 - Conditions must use a feature key or 'price' as the metric with a numeric threshold.
 - research_confidence is an ordinal 1-5 rating of evidence agreement, NOT a probability:
 {scale}
@@ -194,8 +196,10 @@ class Scout:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
-    def investigate(self, asset: str, features: dict, regime: dict, news: dict) -> tuple[ScoutReport, dict]:
+    def investigate(self, asset: str, features: dict, regime: dict, news: dict,
+                    memory: dict | None = None) -> tuple[ScoutReport, dict]:
         meta = {"llm_usage": None, "llm_error": None}
+        memory = memory or {}
         if self.llm.available:
             user = "\n\n".join([
                 f"Investigate {asset} (USD-quoted). Decision time is the close of the last closed 1h candle.",
@@ -203,6 +207,7 @@ class Scout:
                 as_data_block("feature_definitions", FEATURE_DOCS),
                 as_data_block("market_regime", regime),
                 as_data_block("news_status", news),
+                as_data_block("experience_memory", {d: m.get("summary") for d, m in memory.items()}),
             ])
             try:
                 system = SCOUT_SYSTEM.format(scale="\n".join(f"  {k}: {v}" for k, v in RESEARCH_CONFIDENCE_SCALE.items()))
@@ -214,6 +219,9 @@ class Scout:
                 log(logger, logging.WARNING, "scout_llm_fallback", asset=asset, error=str(e))
         raw = rule_based_scout(asset, features, regime, news_available=news.get("available", False))
         report = finalize(raw, RULE_ENGINE, features)
+        mem = memory.get(report.proposed_action)
+        if mem:
+            report.rationale += f" Experience memory ({report.proposed_action}): {mem['summary']['note']}"
         if meta["llm_error"]:
             report.validation_notes.append(f"LLM engine failed ({meta['llm_error']}); rule engine used instead.")
         return report, meta

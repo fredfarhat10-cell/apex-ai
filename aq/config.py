@@ -63,7 +63,10 @@ class Settings:
 
     # Cost assumptions (per side, in basis points). Conservative retail-taker defaults.
     fee_bps_per_side: float = 10.0
-    slippage_bps_per_side: float = 10.0
+    slippage_bps_per_side: float = 10.0          # fallback when no order book is available
+    min_slippage_bps_per_side: float = 2.0       # floor applied to order-book estimates
+    short_borrow_bps_per_day: float = 5.0        # fallback short cost when no funding data
+    use_order_book: bool = True
 
     # Automated monitor
     monitor_enabled: bool = True
@@ -74,6 +77,10 @@ class Settings:
     trigger_volume_ratio_4h: float = 2.5
     trigger_vol_regime_ratio: float = 1.8
     trigger_range_breakout: bool = True
+
+    # Experience memory (similar past trades shown to agents at decision time)
+    memory_k: int = 5
+    memory_min_similar: int = 5  # below this, memory is informational only (no challenge weight)
 
     # Learning loop
     lesson_min_evidence: int = 10
@@ -118,6 +125,11 @@ def get_settings() -> Settings:
         max_data_staleness_minutes=_i("AQ_MAX_DATA_STALENESS_MINUTES", 120),
         fee_bps_per_side=_f("AQ_FEE_BPS_PER_SIDE", 10.0),
         slippage_bps_per_side=_f("AQ_SLIPPAGE_BPS_PER_SIDE", 10.0),
+        min_slippage_bps_per_side=_f("AQ_MIN_SLIPPAGE_BPS_PER_SIDE", 2.0),
+        short_borrow_bps_per_day=_f("AQ_SHORT_BORROW_BPS_PER_DAY", 5.0),
+        use_order_book=_b("AQ_USE_ORDER_BOOK", True),
+        memory_k=_i("AQ_MEMORY_K", 5),
+        memory_min_similar=_i("AQ_MEMORY_MIN_SIMILAR", 5),
         monitor_enabled=_b("AQ_MONITOR_ENABLED", True),
         monitor_interval_minutes=_i("AQ_MONITOR_INTERVAL_MINUTES", 15),
         investigation_cooldown_minutes=_i("AQ_INVESTIGATION_COOLDOWN_MINUTES", 240),

@@ -1,4 +1,4 @@
-// Adaptive Quant dashboard. Every element rendered here comes from a backend endpoint; nothing is simulated.
+// Adaptive Quant — Arena dashboard. Every element is rendered from a backend endpoint; nothing is simulated.
 "use strict";
 
 const $ = (id) => document.getElementById(id);
@@ -23,6 +23,12 @@ function usd(v) {
   return "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: d });
 }
 const when = (iso) => iso ? new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—";
+const hhmm = (iso) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—";
+const ago = (iso) => {
+  if (!iso) return "";
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  return s < 60 ? `${Math.max(0, s | 0)}s ago` : s < 3600 ? `${(s / 60) | 0}m ago` : s < 86400 ? `${(s / 3600) | 0}h ago` : `${(s / 86400) | 0}d ago`;
+};
 const badge = (t) => `<span class="badge ${esc(t)}">${esc(String(t).replaceAll("_", " "))}</span>`;
 const empty = (msg) => `<div class="empty">${esc(msg)}</div>`;
 function fval(v) {
@@ -30,242 +36,338 @@ function fval(v) {
   if (typeof v === "number") return Math.abs(v) >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 2 }) : Number(v.toPrecision(5)).toString();
   return v;
 }
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 // ---- routing -------------------------------------------------------------------
-const TABS = ["overview", "research", "feed", "trades", "lessons", "system"];
+const TABS = ["arena", "research", "lessons", "system"];
 function route() {
-  const h = location.hash.slice(1) || "overview";
+  const h = location.hash.slice(1) || "arena";
   const [name, id] = h.split("/");
-  const view = TABS.includes(name) ? name : name === "trade" ? "trade" : name === "investigation" ? "investigation" : "overview";
+  const view = TABS.includes(name) || name === "trade" || name === "investigation" ? name : "arena";
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
   document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active",
-    a.dataset.tab === view || (view === "trade" && a.dataset.tab === "trades") || (view === "investigation" && a.dataset.tab === "research")));
-  ({ overview: loadOverview, research: loadResearch, feed: loadFeed, trades: loadTrades, lessons: loadLessons,
-     system: loadSystem, trade: () => loadTrade(id), investigation: () => loadInvestigationDetail(id) })[view]();
+    a.dataset.tab === view || (view === "trade" && a.dataset.tab === "arena") || (view === "investigation" && a.dataset.tab === "research")));
+  ({ arena: loadArena, research: loadResearch, lessons: loadLessons, system: loadSystem,
+     trade: () => loadTrade(id), investigation: () => loadInvestigationDetail(id) })[view]();
 }
 window.addEventListener("hashchange", route);
 
-// ---- status chips --------------------------------------------------------------
+// ---- status + ticker -----------------------------------------------------------
+let STATUS = null, PRICES = null, selectedAsset = null;
 async function loadStatus() {
   try {
-    const s = await api("/api/status");
-    const chips = s.providers.filter((p) => p.ok !== null || ["coinbase", "binance"].includes(p.name)).map((p) =>
-      `<span class="chip ${p.ok ? "ok" : p.ok === false ? "bad" : "muted"}" title="${esc(p.last_error || "")}">${esc(p.name)}: ${p.ok ? "ok" : p.ok === false ? "unavailable" : "not yet used"}</span>`);
-    chips.push(`<span class="chip ${s.llm.available ? "ok" : "warn"}" title="${esc(s.llm.note || "")}">Agents: ${esc(s.llm.engine)}</span>`);
-    chips.push(`<span class="chip ${s.monitor.enabled ? "ok" : "muted"}">Monitor: ${s.monitor.enabled ? "every " + s.monitor.interval_minutes + " min" : "off"}</span>`);
-    $("status-chips").innerHTML = chips.join("");
-    return s;
+    STATUS = await api("/api/status");
+    const live = STATUS.providers.some((p) => p.ok) && Object.keys(STATUS.universe.active).length;
+    $("status-line").innerHTML = `<span class="dot ${live ? "live" : "down"}"></span>
+      <span>${live ? "LIVE DATA" : "DATA OFFLINE"}</span><span class="muted">·</span>
+      <span>AGENTS: ${esc(STATUS.llm.engine.toUpperCase())}</span><span class="muted">·</span>
+      <span id="next-scan">${STATUS.monitor.enabled ? "NEXT SCAN " + countdown(STATUS.monitor.next_run) : "MONITOR OFF"}</span>`;
+    renderChips();
   } catch (e) {
-    $("status-chips").innerHTML = `<span class="chip bad">API unreachable: ${esc(e.message)}</span>`;
+    $("status-line").innerHTML = `<span class="dot down"></span><span class="neg">API UNREACHABLE</span>`;
   }
 }
+function countdown(iso) {
+  if (!iso) return "—";
+  const s = Math.max(0, (Date.parse(iso) - Date.now()) / 1000);
+  return `${String((s / 60) | 0).padStart(2, "0")}:${String((s % 60) | 0).padStart(2, "0")}`;
+}
+setInterval(() => {
+  if (STATUS && STATUS.monitor.enabled && $("next-scan")) $("next-scan").textContent = "NEXT SCAN " + countdown(STATUS.monitor.next_run);
+}, 1000);
 
-// ---- overview ------------------------------------------------------------------
 async function loadPrices() {
   try {
-    const p = await api("/api/prices");
-    const items = p.assets.map((a) => a.available
-      ? `<div class="price"><div class="sym">${esc(a.asset)}</div><div class="px">${usd(a.price_usd)}</div><div class="hint">${esc(a.source)} · ${when(a.timestamp)}</div></div>`
-      : `<div class="price"><div class="sym">${esc(a.asset)}</div><div class="px muted">Data unavailable</div><div class="hint" title="${esc(a.error)}">provider error</div></div>`);
-    const removed = Object.entries(p.removed || {}).map(([a, r]) => `${a} (${r})`);
-    $("prices").innerHTML = items.join("") || empty("Data unavailable — no market data provider is reachable.");
-    $("prices-meta").innerHTML = (p.error ? `<span class="neg">${esc(p.error.slice(0, 160))}</span> ` : "") +
-      (removed.length ? `Removed from universe: ${esc(removed.join(", "))}` : "");
+    PRICES = await api("/api/prices");
+    const items = PRICES.assets.map((a) => a.available
+      ? `<span class="tick"><b>${esc(a.asset)}</b><span class="px">${usd(a.price_usd)}</span>${a.change_24h_pct == null ? "" : pct(a.change_24h_pct)}</span>`
+      : `<span class="tick"><b>${esc(a.asset)}</b><span class="muted">data unavailable</span></span>`);
+    const removed = Object.entries(PRICES.removed || {}).map(([a, r]) => `<span class="tick"><b class="muted">${esc(a)}</b><span class="muted">${esc(r)}</span></span>`);
+    const all = [...items, ...removed];
+    // The track is duplicated so the CSS marquee loops seamlessly; the values are the same real quotes.
+    $("ticker").innerHTML = all.length ? all.join("") + all.join("") : `<span class="tick neg">MARKET DATA UNAVAILABLE — no provider reachable</span>`;
   } catch (e) {
-    $("prices").innerHTML = empty("Data unavailable: " + e.message);
+    $("ticker").innerHTML = `<span class="tick neg">MARKET DATA UNAVAILABLE: ${esc(e.message)}</span>`;
   }
 }
 
-function kpi(label, value, note = "") {
-  return `<div class="kpi"><div class="label">${esc(label)}</div><div class="value">${value}</div>${note ? `<div class="note">${esc(note)}</div>` : ""}</div>`;
-}
-
-async function loadOverview() {
-  loadPrices();
-  let o;
-  try { o = await api("/api/overview"); } catch (e) { $("kpis").innerHTML = empty("Overview unavailable: " + e.message); return; }
-  const st = o.state, em = o.equity_metrics, tm = o.trade_metrics, eq = tm.evidence_quality;
-  const small = eq.level === "insufficient" || eq.level === "none";
-  $("fund-meta").textContent = `Started ${when(o.fund.created_at)} · £${o.fund.starting_capital.toLocaleString()} paper capital`;
-  $("kpis").innerHTML = [
-    kpi("Current equity", gbp(st.equity_gbp)),
-    kpi("Total return", pct(em.total_return_pct)),
-    kpi("Today", pct(em.today_return_pct)),
-    kpi("7-day", em.return_7d_pct == null ? NA : pct(em.return_7d_pct), em.return_7d_pct == null ? "Insufficient history" : ""),
-    kpi("30-day", em.return_30d_pct == null ? NA : pct(em.return_30d_pct), em.return_30d_pct == null ? "Insufficient history" : ""),
-    kpi("Max drawdown", `${num(em.max_drawdown_pct)}%`),
-    kpi("Open positions", `${st.open_positions}`, `Exposure ${gbp(st.exposure_gbp)}`),
-    kpi("Number of trades", `${tm.number_of_trades}`),
-    kpi("Win rate", tm.win_rate_pct == null ? NA : `${num(tm.win_rate_pct, 1)}%`, small ? "Descriptive only" : ""),
-    kpi("Average winner", gbp(tm.average_winner_gbp)),
-    kpi("Average loser", gbp(tm.average_loser_gbp)),
-    kpi("Profit factor", tm.profit_factor == null ? NA : num(tm.profit_factor), tm.profit_factor_note || (small ? "Descriptive only" : "")),
-    kpi("Expectancy", gbp(tm.expectancy_gbp), tm.expectancy_r == null ? "" : `${num(tm.expectancy_r)}R per trade`),
-    kpi("Avg planned R:R", tm.average_planned_reward_risk == null ? NA : num(tm.average_planned_reward_risk), "net of est. costs"),
-    kpi("Sharpe", em.sharpe == null ? NA : num(em.sharpe), em.sharpe == null ? "Insufficient sample" : "daily, √365"),
-    kpi("Avg holding time", tm.average_holding_hours == null ? NA : `${num(tm.average_holding_hours, 1)}h`),
-  ].join("");
-  $("evidence-quality").innerHTML = `<div class="callout ${small ? "warn" : "info"}"><strong>Evidence quality:</strong> ${esc(eq.label)}.
-    ${eq.level === "insufficient" ? "Win rate, profit factor and averages from this few trades are not evidence of skill." : ""}
-    ${em.annualised_note ? " " + esc(em.annualised_note) + "." : ""}</div>`;
-  $("warnings").innerHTML = (o.warnings || []).map((w) => `<div class="callout warn">${esc(w)}</div>`).join("") +
-    `<div class="callout info">Agents engine: <strong>${esc(o.llm.engine)}</strong>${o.llm.available ? "" : " — set ANTHROPIC_API_KEY to enable LLM interpretation."}</div>`;
-
-  const b = o.benchmarks, bh = b.btc_buy_and_hold, sma = b.sma_baseline;
-  $("benchmarks").innerHTML = `<table><tr><th>Strategy</th><th>Return</th><th>Notes</th></tr>
-    <tr><td><strong>AI paper strategy</strong></td><td>${b.ai_strategy_return_pct_gbp == null ? NA : pct(b.ai_strategy_return_pct_gbp)}</td><td class="hint">GBP, net of estimated costs</td></tr>
-    <tr><td>BTC buy-and-hold</td><td>${bh.available ? pct(bh.return_pct_gbp) : NA}</td><td class="hint">${bh.available ? `GBP; from ${usd(bh.start_price_usd)} to ${usd(bh.current_price_usd)}` : esc(bh.reason)}</td></tr>
-    <tr><td>BTC SMA50 trend baseline</td><td>${sma.available ? pct(sma.return_pct_usd) : NA}</td><td class="hint">${sma.available ? esc(`${sma.rule}. ${sma.note}`) : esc(sma.reason)}</td></tr>
-  </table><div class="hint" style="margin-top:8px">${b.period_start ? `Period: ${when(b.period_start)} → now (${num(b.period_days, 1)} days). Fixed start = first BTC observation; no date selection.` : ""}</div>`;
-  const rc = o.risk_config;
-  $("risk-config").innerHTML = `<dl class="kv">
-    <dt>Max risk per trade</dt><dd>${rc.max_risk_per_trade_pct}% of equity (${gbp(st.equity_gbp * rc.max_risk_per_trade_pct / 100)})</dd>
-    <dt>Max open positions</dt><dd>${rc.max_open_positions}</dd>
-    <dt>Max portfolio exposure</dt><dd>${rc.max_portfolio_exposure_pct}%</dd>
-    <dt>Minimum reward/risk</dt><dd>${rc.min_reward_risk} : 1 (net of costs; experiment parameter, not optimal)</dd>
-    <dt>Daily loss limit</dt><dd>${rc.daily_loss_limit_pct}% → no new trades</dd>
-    <dt>Cost assumption</dt><dd>${rc.fee_bps_per_side} bps fee + ${rc.slippage_bps_per_side} bps slippage per side</dd>
-    <dt>Shorts</dt><dd>${rc.allow_short ? "allowed (paper)" : "disabled"}</dd></dl>`;
-  const trades = await api("/api/trades");
-  const open = trades.filter((t) => t.status === "OPEN");
-  $("open-positions").innerHTML = open.length ? tradeTable(open) : empty("No open positions.");
-}
-
-// ---- research ------------------------------------------------------------------
-let assetsLoaded = false;
-async function loadResearch() {
-  if (!assetsLoaded) {
-    try {
-      const s = await api("/api/status");
-      const active = Object.keys(s.universe.active);
-      $("asset-select").innerHTML = active.map((a) => `<option>${esc(a)}</option>`).join("") ||
-        '<option disabled>No assets — data unavailable</option>';
-      $("run-btn").disabled = !active.length;
-      if (!active.length) $("run-status").textContent = "Data unavailable: " + (s.universe.error || "no provider reachable");
-      assetsLoaded = active.length > 0;
-    } catch (e) { $("run-status").textContent = e.message; }
-  }
-  const list = await api("/api/investigations?limit=25");
-  $("investigation-list").innerHTML = list.length ? `<div class="scroll"><table><tr><th>Time</th><th>Asset</th><th>Trigger</th><th>Scout</th><th>Decision</th><th>Reason</th></tr>
-    ${list.map((i) => `<tr class="click" onclick="location.hash='investigation/${i.id}'"><td>${when(i.created_at)}</td><td>${esc(i.asset)}</td><td>${esc(i.trigger)}</td>
-    <td>${i.proposed_action ? badge(i.proposed_action) : badge(i.status)}</td><td>${badge(i.final_decision || "—")}</td><td class="hint">${esc((i.final_reason || "").slice(0, 140))}</td></tr>`).join("")}</table></div>`
-    : empty("No investigations yet. Choose an asset and run one.");
+function renderChips() {
+  const active = STATUS ? Object.keys(STATUS.universe.active) : [];
+  if (!active.includes(selectedAsset)) selectedAsset = active[0] || null;
+  $("asset-chips").innerHTML = active.length
+    ? active.map((a) => `<button data-asset="${esc(a)}" class="${a === selectedAsset ? "on" : ""}">${esc(a)}</button>`).join("")
+    : `<span class="neg small">no assets — market data unavailable</span>`;
+  $("run-btn").disabled = !active.length;
+  $("asset-chips").querySelectorAll("button").forEach((b) => b.onclick = () => { selectedAsset = b.dataset.asset; renderChips(); });
 }
 
 $("run-btn").addEventListener("click", async () => {
-  const asset = $("asset-select").value;
+  if (!selectedAsset) return;
   $("run-btn").disabled = true;
-  $("run-status").textContent = `Investigating ${asset}: fetching data, Scout, Devil's Advocate, Risk Engine…`;
+  $("run-status").innerHTML = `<span class="pos">●</span> ${esc(selectedAsset)}: fetching data → scout → devil's advocate → risk engine…`;
   try {
-    const inv = await api("/api/investigations", { method: "POST", body: JSON.stringify({ asset }) });
-    $("investigation-result").innerHTML = renderInvestigation(inv);
-    $("run-status").textContent = `Completed ${when(inv.created_at)}`;
-    loadResearch(); loadStatus();
+    const inv = await api("/api/investigations", { method: "POST", body: JSON.stringify({ asset: selectedAsset }) });
+    $("run-status").innerHTML = `${badge(inv.final_decision)} <a href="#investigation/${inv.id}">view full reasoning →</a>`;
+    loadArena();
   } catch (e) {
-    $("run-status").textContent = "Failed: " + e.message;
+    $("run-status").innerHTML = `<span class="neg">failed: ${esc(e.message)}</span>`;
   } finally { $("run-btn").disabled = false; }
 });
 
+// ---- arena ---------------------------------------------------------------------
+const SERIES_COLOR = { ai: "--c-ai", hodl: "--c-hodl", sma: "--c-sma" };
+const SERIES_TAG = { ai: "AI", hodl: "HODL", sma: "SMA" };
+let LAST_SERIES = null, resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (LAST_SERIES) $("race-chart").innerHTML = raceChart(LAST_SERIES); }, 150);
+});
+
+function raceChart(series) {
+  // viewBox matches the container's pixel size so text never stretches.
+  const W = Math.max(320, $("race-chart").clientWidth || 1000), H = W < 600 ? 260 : 340;
+  const L = 50, R = W < 600 ? 104 : 150, T = 18, B = 28;
+  const pts = series.flatMap((s) => s.points.map(([t, v]) => [Date.parse(t), v]));
+  if (pts.length < 3) return empty("The race starts after the first BTC price is observed and the first equity snapshots are taken.");
+  const x0 = Math.min(...pts.map((p) => p[0]));
+  const x1 = Math.max(x0 + 60e3, ...pts.map((p) => p[0]));
+  let y0 = Math.min(0, ...pts.map((p) => p[1])), y1 = Math.max(0, ...pts.map((p) => p[1]));
+  const pad = Math.max((y1 - y0) * 0.12, 0.25); y0 -= pad; y1 += pad;
+  const X = (t) => L + (t - x0) / (x1 - x0) * (W - L - R), Y = (v) => T + (y1 - v) / (y1 - y0) * (H - T - B);
+  const line = css("--line"), muted = css("--muted"), dim = css("--dim");
+  let grid = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + (y1 - y0) * i / 4;
+    grid += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="${dim}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</text>`;
+    const t = x0 + (x1 - x0) * i / 4;
+    if (W < 600 && i % 2) continue;
+    grid += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="${dim}">${new Date(t).toLocaleString("en-GB", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</text>`;
+  }
+  grid += `<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="${muted}" stroke-dasharray="3 4"/>`;
+  const labels = [];
+  const paths = series.map((s) => {
+    const col = css(SERIES_COLOR[s.id] || "--muted");
+    const p = s.points.map(([t, v]) => [Date.parse(t), v]).sort((a, b) => a[0] - b[0]);
+    if (!p.length) return "";
+    const d = p.map((q, i) => `${i ? "L" : "M"}${X(q[0]).toFixed(1)},${Y(q[1]).toFixed(1)}`).join("");
+    const last = p[p.length - 1];
+    labels.push({ y: Y(last[1]), x: X(last[0]), v: last[1], col, id: s.id });
+    return `<path d="${d}" fill="none" stroke="${col}" stroke-width="${s.id === "ai" ? 2.6 : 1.6}" ${s.id === "ai" ? 'filter="url(#glow)"' : ""} stroke-linejoin="round"/>`;
+  }).join("");
+  labels.sort((a, b) => a.y - b.y);
+  const ly = labels.map((l) => l.y);
+  for (let i = 1; i < ly.length; i++) if (ly[i] - ly[i - 1] < 26) ly[i] = ly[i - 1] + 26;
+  const tags = labels.map((l, i) => `<circle cx="${l.x}" cy="${l.y}" r="4" fill="${l.col}"/>
+    <line x1="${l.x}" y1="${l.y}" x2="${W - R + 8}" y2="${ly[i]}" stroke="${l.col}" stroke-opacity=".4"/>
+    <rect x="${W - R + 8}" y="${ly[i] - 11}" width="${R - 12}" height="22" fill="${l.col}" fill-opacity=".12" stroke="${l.col}"/>
+    <text x="${W - R + 14}" y="${ly[i] + 4}" font-size="11" font-weight="700" fill="${l.col}">${l.v >= 0 ? "+" : ""}${l.v.toFixed(2)}% ${SERIES_TAG[l.id] || ""}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="height:${H}px" role="img" aria-label="Return race: AI fund vs baselines">
+    <defs><filter id="glow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    ${grid}${paths}${tags}</svg>`;
+}
+
+function stat(label, value, note = "") {
+  return `<div class="stat"><div class="label">${esc(label)}</div><div class="v">${value}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
+}
+
+async function loadArena() {
+  loadPrices();
+  let a;
+  try { a = await api("/api/arena"); } catch (e) { $("race-chart").innerHTML = empty("Arena unavailable: " + e.message); return; }
+  const o = a.overview, st = o.state, em = o.equity_metrics, tm = o.trade_metrics, eq = tm.evidence_quality;
+  const small = eq.level === "insufficient" || eq.level === "none";
+  const pnl = st.equity_gbp - o.fund.starting_capital;
+  $("acct-value").innerHTML = `<span class="${pnl > 0 ? "pos" : pnl < 0 ? "neg" : ""}">${gbp(st.equity_gbp)}</span>`;
+  $("acct-sub").innerHTML = `${signedGbp(pnl)} ${pct(em.total_return_pct)} <span class="muted">all-time · today ${pct(em.today_return_pct)} · realised ${gbp(st.realized_gbp)} · unrealised ${gbp(st.unrealized_gbp)}</span>`;
+  LAST_SERIES = a.series;
+  $("race-chart").innerHTML = raceChart(a.series);
+  $("race-legend").innerHTML = a.series.map((s) => `<span><i style="background:${css(SERIES_COLOR[s.id])}"></i>${esc(s.name)} <span class="muted">(${esc(s.unit)})</span></span>`).join("") +
+    (o.benchmarks.period_start ? `<span class="muted">from ${when(o.benchmarks.period_start)} — fixed start, no date picking</span>` : "");
+  const n = small ? (eq.level === "none" ? "no trades yet" : `n=${tm.number_of_trades} · not significant`) : "";
+  $("stats").innerHTML = [
+    stat("TRADES", tm.number_of_trades),
+    stat("WIN RATE", tm.win_rate_pct == null ? NA : `${num(tm.win_rate_pct, 0)}%`, n),
+    stat("PROFIT FACTOR", tm.profit_factor == null ? NA : num(tm.profit_factor), tm.profit_factor_note || n),
+    stat("EXPECTANCY", tm.expectancy_r == null ? NA : `${num(tm.expectancy_r)}R`, n),
+    stat("AVG WIN / LOSS", `${tm.average_winner_gbp == null ? "—" : gbp(tm.average_winner_gbp, 0)} / ${tm.average_loser_gbp == null ? "—" : gbp(tm.average_loser_gbp, 0)}`),
+    stat("MAX DRAWDOWN", `${num(em.max_drawdown_pct)}%`),
+    stat("SHARPE", em.sharpe == null ? NA : num(em.sharpe), em.sharpe == null ? "insufficient sample" : ""),
+    stat("EXPOSURE", gbp(st.exposure_gbp, 0), `${st.open_positions}/${o.risk_config.max_open_positions} positions`),
+  ].join("") + (o.warnings || []).map((w) => `<div class="stat" style="grid-column:1/-1"><div class="n">⚠ ${esc(w)}</div></div>`).join("");
+
+  const trades = await api("/api/trades");
+  renderPositions(trades.filter((t) => t.status === "OPEN"), o.fx ? o.fx.usd_per_gbp : null);
+  const closed = trades.filter((t) => t.status === "CLOSED");
+  $("sub-completed").innerHTML = closed.length ? `<div class="scroll"><table><tr><th>CLOSED</th><th>ASSET</th><th>SIDE</th><th>ENTRY → EXIT</th><th>EXIT</th><th>NET P/L</th><th>THESIS</th></tr>
+    ${closed.map((t) => `<tr class="click" onclick="location.hash='trade/${t.id}'"><td>${when(t.exit_time)}</td><td><b>${esc(t.asset)}</b></td><td>${badge(t.direction)}</td>
+    <td>${usd(t.entry_price_usd)} → ${usd(t.exit_price_usd)}</td><td>${badge(t.exit_reason)}</td><td>${signedGbp(t.net_pnl_gbp)}</td><td>${t.thesis_correct ? badge(t.thesis_correct) : NA}</td></tr>`).join("")}</table></div>`
+    : empty("No completed trades yet.");
+  $("sub-leaderboard").innerHTML = `<table><tr><th>#</th><th>STRATEGY</th><th>RETURN</th><th>VALUE</th><th>TRADES</th><th>NOTE</th></tr>
+    ${a.leaderboard.map((r, i) => `<tr><td class="rank ${i === 0 && r.return_pct != null ? "r1" : ""}">${r.return_pct == null ? "—" : i + 1}</td>
+    <td><span class="swatch" style="background:${css(SERIES_COLOR[r.id])}"></span><b>${esc(r.name)}</b></td><td>${pct(r.return_pct)}</td>
+    <td>${gbp(r.value_gbp)}</td><td>${r.trades ?? "—"}</td><td class="muted small">${esc(r.note || "")}</td></tr>`).join("")}</table>
+    <div class="muted small" style="margin-top:8px">Same automatically fixed observation period. A ranking over days or a handful of trades is not evidence of skill.</div>`;
+
+  const events = await api("/api/feed?limit=80");
+  renderAgents(events);
+  renderChat(events);
+  renderTerminal(events);
+}
+
+function renderPositions(open, fx) {
+  if (!open.length) { $("sub-positions").innerHTML = empty("No open positions — the system is comfortable doing nothing until evidence qualifies."); return; }
+  const px = Object.fromEntries((PRICES?.assets || []).filter((a) => a.available).map((a) => [a.asset, a.price_usd]));
+  $("sub-positions").innerHTML = `<div class="positions">${open.map((t) => {
+    const p = px[t.asset], sign = t.direction === "LONG" ? 1 : -1;
+    // Bar: left edge = stop, right edge = target, whatever the direction.
+    const bar = (v) => Math.min(100, Math.max(0, (v - t.stop_price_usd) / (t.target_price_usd - t.stop_price_usd) * 100));
+    const upnl = p != null && fx ? t.units * (p - t.entry_price_usd) * sign / fx : null;
+    return `<div class="pos-card" onclick="location.hash='trade/${t.id}'">
+      <div class="pos-row"><span><span class="pos-asset">${esc(t.asset)}</span> ${badge(t.direction)}</span><span class="pnl">${upnl == null ? '<span class="muted small">price unavailable</span>' : signedGbp(upnl)}</span></div>
+      <div class="pos-row muted small"><span>entry ${usd(t.entry_price_usd)}</span><span>mark ${p == null ? "—" : usd(p)}</span></div>
+      <div class="range"><div class="entry" style="left:${bar(t.entry_price_usd)}%"></div>${p == null ? "" : `<div class="now" style="left:${bar(p)}%"></div>`}</div>
+      <div class="range-labels"><span class="neg">STOP ${usd(t.stop_price_usd)}</span><span class="pos">TARGET ${usd(t.target_price_usd)}</span></div>
+      <div class="pos-row muted small" style="margin-top:6px"><span>risk ${gbp(t.risk_gbp)} · ${gbp(t.notional_gbp, 0)} notional</span><span>expires ${when(t.expires_at)}</span></div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+document.querySelectorAll("#subtabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("#subtabs button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".sub-view").forEach((v) => v.classList.toggle("on", v.id === `sub-${b.dataset.sub}`));
+});
+
+// ---- agents / chat / terminal --------------------------------------------------
+const AGENT = {
+  INVESTIGATION: ["SC", "SCOUT", "a-scout"], CHALLENGE: ["DA", "DEVIL'S ADVOCATE", "a-da"],
+  PAPER_TRADE: ["RE", "RISK ENGINE", "a-risk"], NO_TRADE: ["RE", "RISK ENGINE", "a-risk"],
+  TRADE_CLOSED: ["PF", "PORTFOLIO", "a-trade"], LESSON: ["LN", "LEARNING", "a-learn"], FOLLOWUP: ["LN", "LEARNING", "a-learn"],
+  MONITOR_RUN: ["MN", "MONITOR", "a-sys"], DATA_UNAVAILABLE: ["MN", "DATA", "a-sys"], BENCHMARK_START: ["MN", "BENCHMARK", "a-sys"],
+};
+function chatText(e) {
+  const p = e.payload_json || {};
+  switch (e.type) {
+    case "INVESTIGATION": return `<b>${esc(e.title)}</b><br>${esc(p.summary)}<br><span class="muted">Thesis:</span> ${esc(p.thesis)} <span class="muted">· confidence ${esc(p.research_confidence)}/5 (not a probability)</span>`;
+    case "CHALLENGE": return `${badge(p.verdict)} ${esc(p.summary)}`;
+    case "PAPER_TRADE": return `<b>OPENED ${esc(e.asset)} ${esc(p.direction)}</b> @ ${usd(p.entry)} · stop ${usd(p.stop)} · target ${usd(p.target)} · risk ${gbp(p.risk_gbp)}`;
+    case "NO_TRADE": return `<b>NO TRADE</b> — ${esc(p.reason)}`;
+    case "TRADE_CLOSED": return `<b>${esc(e.title)}</b><br>thesis: ${esc(p.thesis_correct)} · exit ${usd(p.exit_price)}`;
+    case "LESSON": return esc(p.lesson);
+    case "FOLLOWUP": return esc(p.timing_assessment);
+    case "DATA_UNAVAILABLE": return `<span class="neg">${esc(e.title)}</span>`;
+    case "BENCHMARK_START": return `Race start recorded: BTC ${usd(p.price_usd)}`;
+    default: return esc(e.title);
+  }
+}
+const link = (e) => e.ref_type === "trade" ? `#trade/${e.ref_id}` : e.ref_type === "investigation" ? `#investigation/${e.ref_id}` : null;
+function renderChat(events) {
+  // Quiet monitor scans are kept for the system log; the chat shows agent activity.
+  const msgs = events.filter((e) => e.type !== "MONITOR_RUN" || Object.keys((e.payload_json || {}).triggers || {}).length);
+  $("chat").innerHTML = msgs.length ? msgs.map((e) => {
+    const [ab, name, cls] = AGENT[e.type] || ["··", e.type, "a-sys"];
+    const l = link(e);
+    return `<div class="msg"><div class="avatar ${cls}">${ab}</div><div><div class="who">${name}<span class="when">${hhmm(e.created_at)} · ${ago(e.created_at)}</span></div>
+      <div class="text">${chatText(e)}${l ? ` <a href="${l}">open →</a>` : ""}</div></div></div>`;
+  }).join("") : empty("Quiet. No agent activity yet — run an investigation or wait for the monitor.");
+}
+function renderAgents(events) {
+  const last = (types) => events.find((e) => types.includes(e.type));
+  const card = (color, name, e, fallback) => `<div class="agent"><div class="name" style="color:var(${color})">● ${name}</div>
+    <div class="what" title="${esc(e ? e.title : fallback)}">${e ? `${ago(e.created_at)} · ${esc(e.title)}` : esc(fallback)}</div></div>`;
+  $("agents").innerHTML = card("--cyan", "SCOUT", last(["INVESTIGATION"]), "idle — no investigations yet")
+    + card("--violet", "DEVIL'S ADVOCATE", last(["CHALLENGE"]), "idle — nothing to challenge")
+    + card("--amber", "RISK ENGINE", last(["PAPER_TRADE", "NO_TRADE"]), "idle")
+    + card("--green", "LEARNING", last(["LESSON", "FOLLOWUP"]), "no closed trades yet");
+}
+function renderTerminal(events) {
+  const lines = [...events].reverse().map((e) => {
+    const p = e.payload_json || {};
+    const extra = e.type === "MONITOR_RUN" && (p.errors || []).length ? ` <span class="neg">errors: ${esc(p.errors.join("; ").slice(0, 160))}</span>` : "";
+    return `<div class="term-line"><span class="t">[${when(e.created_at)}]</span> <span class="k">${esc(e.type.padEnd(16))}</span> ${esc(e.title)}${extra}</div>`;
+  });
+  $("terminal").innerHTML = lines.length ? lines.join("") : `<div class="term-line"><span class="k">$</span> waiting for first event…</div>`;
+  $("terminal").scrollTop = $("terminal").scrollHeight;
+  $("term-meta").textContent = `${events.length} most recent events`;
+}
+
+// ---- research / investigation detail -------------------------------------------
+async function loadResearch() {
+  const list = await api("/api/investigations?limit=50");
+  $("investigation-list").innerHTML = list.length ? `<div class="scroll"><table><tr><th>TIME</th><th>ASSET</th><th>TRIGGER</th><th>SCOUT</th><th>DECISION</th><th>REASON</th></tr>
+    ${list.map((i) => `<tr class="click" onclick="location.hash='investigation/${i.id}'"><td>${when(i.created_at)}</td><td><b>${esc(i.asset)}</b></td><td>${esc(i.trigger)}</td>
+    <td>${i.proposed_action ? badge(i.proposed_action) : badge(i.status)}</td><td>${badge(i.final_decision || "—")}</td><td class="muted small">${esc((i.final_reason || "").slice(0, 140))}</td></tr>`).join("")}</table></div>`
+    : empty("No investigations yet. Use RUN on the Arena.");
+}
+
 function conditions(list) {
   if (!list || !list.length) return '<span class="muted">None stated</span>';
-  return `<ul class="tight">${list.map((c) => `<li>${esc(c.description)} <span class="mono muted">[${esc(c.metric)} ${esc(c.operator)} ${fval(c.threshold)}]</span></li>`).join("")}</ul>`;
+  return `<ul class="tight">${list.map((c) => `<li>${esc(c.description)} <span class="mono">[${esc(c.metric)} ${esc(c.operator)} ${fval(c.threshold)}]</span></li>`).join("")}</ul>`;
+}
+
+function memoryBlock(mem, dir) {
+  const m = mem && mem[dir];
+  if (!m) return "";
+  return `<h3>EXPERIENCE MEMORY · ${esc(dir)}</h3><p>${esc(m.summary.note)}</p>${m.matches.length ? `<table><tr><th>PAST TRADE</th><th>DISTANCE</th><th>R</th><th>OUTCOME</th><th>LESSON</th></tr>
+    ${m.matches.map((x) => `<tr class="click" onclick="location.hash='trade/${x.trade_id}'"><td>${esc(x.asset)} ${when(x.entry_time)}</td><td>${num(x.similarity_distance)}</td><td>${num(x.r_multiple)}</td>
+    <td>${badge(x.exit_reason)} ${esc(x.failure_category || "win")}</td><td class="muted small">${esc((x.lesson || "").slice(0, 120))}</td></tr>`).join("")}</table>` : ""}`;
 }
 
 function renderInvestigation(inv) {
   if (inv.status === "data_unavailable") {
-    return `<div class="panel"><div class="step bad"><div class="step-title"><span class="who">${esc(inv.asset)} · ${when(inv.created_at)}</span>${badge("NO_TRADE")}</div>
-      <p>${esc(inv.final_reason)}</p><p class="hint">No analysis was performed because real market data could not be obtained. Nothing was simulated.</p></div></div>`;
+    return `<div class="card"><div class="step bad"><div class="step-title"><span class="who">${esc(inv.asset)} · ${when(inv.created_at)}</span>${badge("NO_TRADE")}</div>
+      <p>${esc(inv.final_reason)}</p><p class="muted">No analysis was performed because real market data could not be obtained. Nothing was simulated.</p></div></div>`;
   }
   const sc = inv.scout_output_json || {}, ch = inv.challenge || {}, da = ch.devils_advocate_output_json || {};
-  const rk = inv.risk || {}, pos = rk.position_json, obs = inv.observation || {};
-  const reg = sc.market_regime || {};
-  const ev = (inv.evidence_json || []).map((e) => `<tr><td class="mono">${esc(e.key)}</td><td>${esc(fval(e.value))}</td><td class="hint">${esc(e.description)}</td></tr>`).join("");
+  const rk = inv.risk || {}, pos = rk.position_json, obs = inv.observation || {}, reg = sc.market_regime || {};
+  const mem = inv.memory_json || {}, ce = mem.cost_estimation || {};
+  const ev = (inv.evidence_json || []).map((e) => `<tr><td class="mono">${esc(e.key)}</td><td>${esc(fval(e.value))}</td><td class="muted small">${esc(e.description)}</td></tr>`).join("");
   const daClass = da.verdict === "APPROVE" ? "ok" : da.verdict === "VETO" ? "bad" : "warn";
-  const findings = (da.findings || []).map((f) => `<li>${badge(f.severity)} <strong>${esc(f.check)}</strong> (${esc(f.category.replaceAll("_", " "))}): ${esc(f.claim)}${f.evidence_keys.length ? ` <span class="mono muted">[${esc(f.evidence_keys.join(", "))}]</span>` : ""}</li>`).join("");
-  return `<div class="panel"><div class="panel-head"><h2>${esc(inv.asset)} investigation · ${when(inv.created_at)}</h2>${badge(inv.final_decision)}</div>
+  const findings = (da.findings || []).map((f) => `<li>${badge(f.severity)} <b>${esc(f.check)}</b> <span class="muted">(${esc(f.category.replaceAll("_", " "))})</span>: ${esc(f.claim)}${f.evidence_keys.length ? ` <span class="mono">[${esc(f.evidence_keys.join(", "))}]</span>` : ""}</li>`).join("");
+  const noProposal = inv.proposed_action === "NO_TRADE";
+  return `<div class="card"><div class="panel-head"><h2>${esc(inv.asset)} INVESTIGATION · ${when(inv.created_at)}</h2>${badge(inv.final_decision)}</div>
   <div class="chain">
-    <div class="step"><div class="step-title"><span class="who">1 · Observation (what was known at time T)</span><span class="hint">${esc(obs.data_source)} · last closed 1h candle ${when(obs.last_closed_candle_at)}</span></div>
-      <dl class="kv"><dt>Spot price</dt><dd>${usd(obs.price_usd)} <span class="hint">(${when(obs.price_timestamp)})</span></dd>
-      <dt>GBP/USD</dt><dd>${obs.fx_usd_per_gbp ? num(obs.fx_usd_per_gbp, 4) + ` <span class="hint">${esc(obs.fx_source)}</span>` : "Data unavailable"}</dd>
-      <dt>Market regime</dt><dd>${esc(reg.label)} <span class="hint">(BTC trend ${esc(reg.btc_trend)}, ${esc(reg.breadth_up_24h)}/${esc(reg.assets_observed)} assets up 24h)</span></dd>
+    <div class="step"><div class="step-title"><span class="who">01 · OBSERVATION — what was known at time T</span><span class="mono">${esc(obs.data_source)} · last closed 1h candle ${when(obs.last_closed_candle_at)}</span></div>
+      <dl class="kv"><dt>Spot</dt><dd>${usd(obs.price_usd)} <span class="muted">(${when(obs.price_timestamp)})</span></dd>
+      <dt>GBP/USD</dt><dd>${obs.fx_usd_per_gbp ? num(obs.fx_usd_per_gbp, 4) + ` <span class="muted">${esc(obs.fx_source)}</span>` : "Data unavailable"}</dd>
+      <dt>Regime</dt><dd>${esc(reg.label)} <span class="muted">(BTC ${esc(reg.btc_trend)}, ${esc(reg.breadth_up_24h)}/${esc(reg.assets_observed)} up 24h)</span></dd>
       <dt>News</dt><dd>${esc((sc.news_status || {}).reason || "—")}</dd></dl>
       <details style="margin-top:8px"><summary>Evidence (deterministic features)</summary><div class="scroll"><table>${ev}</table></div></details></div>
-    <div class="step"><div class="step-title"><span class="who">2 · Market Intelligence Scout</span><span>${badge(inv.proposed_action)} <span class="hint">engine ${esc(inv.scout_engine)}</span></span></div>
-      <h3>What is happening</h3><p>${esc(sc.what_is_happening)}</p>
-      <h3>Why might it be happening</h3><ul class="tight">${(sc.possible_explanations || []).map((e) => `<li><strong>${esc(e.category.replaceAll("_", " "))}</strong> (${esc(e.plausibility)}): ${esc(e.explanation)}</li>`).join("")}</ul>
-      <h3>Thesis</h3><p>${esc(sc.thesis)}</p>
-      <div class="grid2"><div><h3>Would confirm</h3>${conditions(sc.confirmation_conditions)}</div><div><h3>Would invalidate</h3>${conditions(sc.invalidation_conditions)}</div></div>
-      <dl class="kv"><dt>Horizon</dt><dd>${esc(sc.horizon_hours)}h</dd><dt>Research Confidence</dt><dd>${esc(sc.research_confidence)}/5 <span class="hint">ordinal evidence agreement — not a probability</span></dd>
+    <div class="step"><div class="step-title"><span class="who" style="color:var(--cyan)">02 · SCOUT</span><span>${badge(inv.proposed_action)} <span class="mono">${esc(inv.scout_engine)}</span></span></div>
+      <h3>WHAT IS HAPPENING</h3><p>${esc(sc.what_is_happening)}</p>
+      <h3>WHY MIGHT IT BE HAPPENING</h3><ul class="tight">${(sc.possible_explanations || []).map((e) => `<li><b>${esc(e.category.replaceAll("_", " "))}</b> <span class="muted">(${esc(e.plausibility)})</span>: ${esc(e.explanation)}</li>`).join("")}</ul>
+      <h3>THESIS</h3><p>${esc(sc.thesis)}</p>
+      <div class="grid2"><div><h3>WOULD CONFIRM</h3>${conditions(sc.confirmation_conditions)}</div><div><h3>WOULD INVALIDATE</h3>${conditions(sc.invalidation_conditions)}</div></div>
+      <dl class="kv"><dt>Horizon</dt><dd>${esc(sc.horizon_hours)}h</dd><dt>Research Confidence</dt><dd>${esc(sc.research_confidence)}/5 <span class="muted">ordinal evidence agreement — not a probability</span></dd>
       <dt>Rationale</dt><dd>${esc(sc.rationale)}</dd></dl>
-      ${(sc.rejected_alternatives || []).length ? `<h3>Alternatives rejected</h3><ul class="tight">${sc.rejected_alternatives.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+      ${(sc.rejected_alternatives || []).length ? `<h3>ALTERNATIVES REJECTED</h3><ul class="tight">${sc.rejected_alternatives.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+      ${memoryBlock(mem, noProposal ? "LONG" : inv.proposed_action)}
       ${(sc.validation_notes || []).length ? `<div class="callout warn">Validation: ${esc(sc.validation_notes.join(" · "))}</div>` : ""}</div>
-    <div class="step ${da.verdict === "NOT_REQUIRED" ? "" : daClass}"><div class="step-title"><span class="who">3 · Devil's Advocate</span><span>${badge(da.verdict || ch.decision)} <span class="hint">engine ${esc(da.engine)}</span></span></div>
+    <div class="step ${da.verdict === "NOT_REQUIRED" ? "" : daClass}"><div class="step-title"><span class="who" style="color:var(--violet)">03 · DEVIL'S ADVOCATE</span><span>${badge(da.verdict || ch.decision)} <span class="mono">${esc(da.engine)}</span></span></div>
       <p>${esc(da.summary)}</p>${findings ? `<ul class="tight">${findings}</ul>` : ""}
-      ${(da.alternative_explanations || []).length ? `<h3>Alternative explanations</h3><ul class="tight">${da.alternative_explanations.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
-      ${da.what_would_change_verdict ? `<p class="hint">What would change the verdict: ${esc(da.what_would_change_verdict)}</p>` : ""}
+      ${(da.alternative_explanations || []).length ? `<h3>ALTERNATIVE EXPLANATIONS</h3><ul class="tight">${da.alternative_explanations.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${da.what_would_change_verdict ? `<p class="muted">What would change the verdict: ${esc(da.what_would_change_verdict)}</p>` : ""}
       ${(da.validation_notes || []).length ? `<div class="callout warn">${esc(da.validation_notes.join(" · "))}</div>` : ""}</div>
-    <div class="step ${rk.approved ? "ok" : inv.proposed_action === "NO_TRADE" ? "" : "bad"}"><div class="step-title"><span class="who">4 · Risk Engine (deterministic)</span>${badge(rk.approved ? "APPROVE" : inv.proposed_action === "NO_TRADE" ? "NO_PROPOSAL" : "VETO")}</div>
-      <table>${(rk.checks_json || []).map((c) => `<tr><td>${c.passed ? '<span class="pos">✓</span>' : '<span class="neg">✗</span>'}</td><td class="mono">${esc(c.name)}</td><td class="hint">${esc(c.detail)}</td></tr>`).join("")}</table>
+    <div class="step ${rk.approved ? "ok" : noProposal ? "" : "bad"}"><div class="step-title"><span class="who" style="color:var(--amber)">04 · RISK ENGINE (deterministic)</span>${badge(rk.approved ? "APPROVE" : noProposal ? "NO_PROPOSAL" : "VETO")}</div>
+      <table>${(rk.checks_json || []).map((c) => `<tr><td>${c.passed ? '<span class="pos">✓</span>' : '<span class="neg">✗</span>'}</td><td class="mono">${esc(c.name)}</td><td class="muted small">${esc(c.detail)}</td></tr>`).join("")}</table>
       ${pos ? `<dl class="kv" style="margin-top:10px"><dt>Entry</dt><dd>${usd(pos.entry_price_usd)}</dd><dt>Stop</dt><dd>${usd(pos.stop_price_usd)} (${pos.stop_atr_multiple} ATR)</dd>
-        <dt>Target</dt><dd>${usd(pos.target_price_usd)} (${pos.target_atr_multiple} ATR)</dd><dt>Size</dt><dd>${num(pos.units, 6)} units · ${gbp(pos.notional_gbp)} notional${pos.capped_by_exposure ? " (capped by exposure)" : ""}</dd>
-        <dt>Planned risk</dt><dd>${gbp(pos.risk_gbp)} (${num(pos.risk_pct_of_equity)}% of equity, incl. est. costs)</dd><dt>Net reward/risk</dt><dd>${num(pos.net_reward_risk)} (gross ${num(pos.gross_reward_risk)})</dd></dl>` : ""}</div>
-    <div class="step ${inv.final_decision === "TRADE" ? "ok" : ""}"><div class="step-title"><span class="who">5 · Decision</span>${badge(inv.final_decision)}</div>
-      <p>${esc(inv.final_reason)}</p>${inv.trade ? `<a href="#trade/${inv.trade.id}">View paper trade →</a>` : ""}</div>
+        <dt>Target</dt><dd>${usd(pos.target_price_usd)} (${pos.target_atr_multiple} ATR)</dd><dt>Size</dt><dd>${num(pos.units, 6)} units · ${gbp(pos.notional_gbp)}${pos.capped_by_exposure ? " (capped by exposure)" : ""}</dd>
+        <dt>Planned risk</dt><dd>${gbp(pos.risk_gbp)} (${num(pos.risk_pct_of_equity)}% of equity, incl. est. costs)</dd><dt>Net R:R</dt><dd>${num(pos.net_reward_risk)} (gross ${num(pos.gross_reward_risk)})</dd></dl>` : ""}
+      ${ce.costs ? `<h3>EXECUTION COST ESTIMATE</h3><dl class="kv"><dt>Fee</dt><dd>${esc(ce.costs.fee_bps_per_side)} bps/side</dd><dt>Slippage</dt><dd>${num(ce.costs.slippage_bps_per_side)} bps/side <span class="muted">${esc(ce.costs.slippage_source)}</span></dd>
+        <dt>Funding</dt><dd>${num(ce.costs.funding_bps_per_day)} bps/day <span class="muted">${esc(ce.costs.funding_source)}</span></dd>
+        ${ce.order_book_error ? `<dt>Order book</dt><dd class="muted">${esc(ce.order_book_error.slice(0, 160))}</dd>` : ""}</dl>` : ""}</div>
+    <div class="step ${inv.final_decision === "TRADE" ? "ok" : ""}"><div class="step-title"><span class="who">05 · DECISION</span>${badge(inv.final_decision)}</div>
+      <p>${esc(inv.final_reason)}</p>${inv.trade ? `<a href="#trade/${inv.trade.id}">view paper trade →</a>` : ""}</div>
   </div></div>`;
 }
 
 async function loadInvestigationDetail(id) {
   try {
     const inv = await api(`/api/investigations/${id}`);
-    $("investigation-detail").innerHTML = `<a class="back" href="#research">← Research</a>` + renderInvestigation(inv);
+    $("investigation-detail").innerHTML = `<a class="back" href="#research">← INVESTIGATIONS</a>` + renderInvestigation(inv);
   } catch (e) { $("investigation-detail").innerHTML = empty(e.message); }
 }
 
-// ---- feed ----------------------------------------------------------------------
-function feedBody(e) {
-  const p = e.payload_json || {};
-  switch (e.type) {
-    case "INVESTIGATION": return `${p.trigger === "monitor" ? "Automated monitor · " : ""}Scout (${esc(p.scout_engine)}): ${esc(p.summary)}<br>Thesis: ${esc(p.thesis)} · Research Confidence ${esc(p.research_confidence)}/5`;
-    case "CHALLENGE": return `${esc(p.summary)}`;
-    case "PAPER_TRADE": return `Entry ${usd(p.entry)} · Stop ${usd(p.stop)} · Target ${usd(p.target)} · Risk ${gbp(p.risk_gbp)}<br>Thesis: ${esc(p.thesis)}`;
-    case "TRADE_CLOSED": return `${signedGbp(p.net_pnl_gbp)} · exit ${usd(p.exit_price)} (${esc(p.exit_reason)}) · Thesis: ${esc(p.thesis_correct)}<br>Lesson: ${esc(p.lesson)}`;
-    case "NO_TRADE": return esc(p.reason);
-    case "LESSON": return esc(p.lesson);
-    case "MONITOR_RUN": return Object.keys(p.triggers || {}).length ? "Triggers: " + esc(Object.entries(p.triggers).map(([a, t]) => `${a} (${t.map((x) => x.signal).join(", ")})`).join("; ")) : "Deterministic filters found nothing unusual.";
-    case "DATA_UNAVAILABLE": return esc(p.error);
-    case "FOLLOWUP": return esc(p.timing_assessment);
-    case "BENCHMARK_START": return `BTC buy-and-hold and SMA baselines measured from here (GBP/USD ${num(p.fx_usd_per_gbp, 4)}, source ${esc(p.source)}).`;
-    default: return esc(JSON.stringify(p).slice(0, 200));
-  }
-}
-function feedLink(e) {
-  if (e.ref_type === "trade") return `#trade/${e.ref_id}`;
-  if (e.ref_type === "investigation") return `#investigation/${e.ref_id}`;
-  return null;
-}
-async function loadFeed() {
-  try {
-    const ev = await api("/api/feed?limit=100");
-    $("feed").innerHTML = ev.length ? ev.map((e) => {
-      const link = feedLink(e);
-      return `<div class="feed-item"><div class="when">${when(e.created_at)}<br>${badge(e.type)}</div>
-        <div><div class="title">${link ? `<a href="${link}">${esc(e.title)}</a>` : esc(e.title)}</div><div class="body">${feedBody(e)}</div></div></div>`;
-    }).join("") : empty("No events yet. Run an investigation or wait for the automated monitor.");
-  } catch (e) { $("feed").innerHTML = empty(e.message); }
-}
-
-// ---- trades --------------------------------------------------------------------
-function tradeTable(rows) {
-  return `<div class="scroll"><table><tr><th>Entry</th><th>Asset</th><th>Dir</th><th>Entry px</th><th>Stop</th><th>Target</th><th>Risk</th><th>Status</th><th>Net P/L</th><th>Thesis</th></tr>
-  ${rows.map((t) => `<tr class="click" onclick="location.hash='trade/${t.id}'"><td>${when(t.entry_time)}</td><td>${esc(t.asset)}</td><td>${badge(t.direction)}</td>
-  <td>${usd(t.entry_price_usd)}</td><td>${usd(t.stop_price_usd)}</td><td>${usd(t.target_price_usd)}</td><td>${gbp(t.risk_gbp)}</td>
-  <td>${esc(t.status)}${t.exit_reason ? ` · ${esc(t.exit_reason)}` : ""}</td><td>${t.net_pnl_gbp == null ? NA : signedGbp(t.net_pnl_gbp)}</td><td>${t.thesis_correct ? badge(t.thesis_correct) : NA}</td></tr>`).join("")}</table></div>`;
-}
-async function loadTrades() {
-  const t = await api("/api/trades");
-  $("trades").innerHTML = t.length ? tradeTable(t) : empty("No paper trades yet. The system is comfortable doing nothing until evidence qualifies.");
-}
-
+// ---- trade detail --------------------------------------------------------------
 function chartSvg(c) {
   const pts = [...(c.before_1h || []).slice(-24).map((x) => [Date.parse(x.open_time) + 3600e3, x.close]),
                ...(c.after_5m || []).map((x) => [Date.parse(x.open_time) + 300e3, x.close])].sort((a, b) => a[0] - b[0]);
@@ -279,15 +381,14 @@ function chartSvg(c) {
   const hline = (v, col, dash) => `<line x1="${P}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${col}" stroke-dasharray="${dash}" stroke-width="1.3"/>
     <text x="${W - R + 4}" y="${Y(v) + 4}" font-size="10" fill="${col}">${Number(v.toPrecision(6))}</text>`;
   const et = Date.parse(c.entry_time);
-  const style = getComputedStyle(document.documentElement);
-  const pos = style.getPropertyValue("--pos").trim(), neg = style.getPropertyValue("--neg").trim(), acc = style.getPropertyValue("--accent").trim(), mut = style.getPropertyValue("--muted").trim(), txt = style.getPropertyValue("--text").trim();
+  const pos = css("--green"), neg = css("--red"), acc = css("--cyan"), mut = css("--muted"), txt = css("--text");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price chart with entry, stop, target and exit">
     <path d="${path}" fill="none" stroke="${txt}" stroke-width="1.4"/>
     ${hline(c.entry, acc, "4 3")}${hline(c.stop, neg, "6 3")}${hline(c.target, pos, "6 3")}
     <line x1="${X(et)}" x2="${X(et)}" y1="10" y2="${H - 10}" stroke="${mut}" stroke-dasharray="2 3"/>
     <text x="${X(et) + 4}" y="${H - 14}" font-size="10" fill="${mut}">entry ${new Date(et).toLocaleString("en-GB", { timeStyle: "short", dateStyle: "short" })}</text>
     ${c.exit != null ? `<circle cx="${X(Date.parse(c.exit_time))}" cy="${Y(c.exit)}" r="5" fill="${acc}"/>` : ""}
-  </svg><div class="legend"><span><i style="background:${txt}"></i>Close (last 24h before entry at 1h, then 5m)</span><span><i style="background:${acc}"></i>Entry</span>
+  </svg><div class="legend"><span><i style="background:${txt}"></i>Close (24h before entry at 1h, then 5m)</span><span><i style="background:${acc}"></i>Entry</span>
   <span><i style="background:${neg}"></i>Stop</span><span><i style="background:${pos}"></i>Target</span>${c.exit != null ? "<span>● Exit</span>" : ""}</div>`;
 }
 
@@ -296,37 +397,39 @@ async function loadTrade(id) {
   el.innerHTML = empty("Loading…");
   let t;
   try { t = await api(`/api/trades/${id}`); } catch (e) { el.innerHTML = empty(e.message); return; }
-  const o = t.outcome, inv = t.investigation || {}, sc = inv.scout_output_json || {}, da = (inv.challenge || {}).devils_advocate_output_json || {};
-  const l = t.lessons[0], d = (o && o.evaluation_json) || {};
-  el.innerHTML = `<a class="back" href="#trades">← Trades</a>
-  <div class="panel"><div class="panel-head"><h2>${esc(t.asset)} ${badge(t.direction)} · ${when(t.entry_time)}</h2>
-    <span>${badge(t.status)} ${t.status === "OPEN" ? `<button class="secondary" id="close-btn">Close at current market price</button>` : ""}</span></div>
-    <h3>Why did we enter?</h3><p>${esc(t.thesis)}</p><p class="hint">${esc(t.entry_reason)}</p>
+  const o = t.outcome, inv = t.investigation || {}, da = (inv.challenge || {}).devils_advocate_output_json || {};
+  const l = t.lessons[0], d = (o && o.evaluation_json) || {}, costs = t.costs_json || {};
+  el.innerHTML = `<a class="back" href="#arena">← ARENA</a>
+  <div class="card"><div class="panel-head"><h2>${esc(t.asset)} ${badge(t.direction)} · ${when(t.entry_time)}</h2>
+    <span>${badge(t.status)} ${t.status === "OPEN" ? '<button class="ghost" id="close-btn">CLOSE AT MARKET</button>' : ""}</span></div>
+    <h3>WHY DID WE ENTER?</h3><p>${esc(t.thesis)}</p><p class="muted">${esc(t.entry_reason)}</p>
     <dl class="kv"><dt>Research Confidence</dt><dd>${esc(t.research_confidence)}/5 (not a probability)</dd>
-    <dt>Agents involved</dt><dd>${(t.agents_json || []).map((a) => `${esc(a.agent)} <span class="hint">(${esc(a.engine)})</span>`).join(" · ")}</dd>
-    <dt>Alternatives rejected</dt><dd>${esc((t.rejected_alternatives_json || []).join(" · "))}</dd></dl>
-    <h3>What did we know at the time?</h3>
-    <p>${esc(inv.situation_summary)}</p>
-    <div class="scroll"><table>${(t.evidence_json || []).map((e) => `<tr><td class="mono">${esc(e.key)}</td><td>${esc(fval(e.value))}</td><td class="hint">${esc(e.description)}</td></tr>`).join("")}</table></div>
-    <p class="hint">Observation recorded ${when((inv.observation || {}).observed_at)} from ${esc((inv.observation || {}).data_source)}; last closed candle ${when((inv.observation || {}).last_closed_candle_at)}.</p>
-    <h3>What did the Devil's Advocate say?</h3><p>${badge(t.devils_advocate_verdict)} ${esc(da.summary || t.devils_advocate_summary)}</p>
+    <dt>Agents</dt><dd>${(t.agents_json || []).map((a) => `${esc(a.agent)} <span class="muted">(${esc(a.engine)})</span>`).join(" · ")}</dd>
+    <dt>Rejected</dt><dd>${esc((t.rejected_alternatives_json || []).join(" · "))}</dd></dl>
+    <h3>WHAT DID WE KNOW AT THE TIME?</h3><p>${esc(inv.situation_summary)}</p>
+    <div class="scroll"><table>${(t.evidence_json || []).map((e) => `<tr><td class="mono">${esc(e.key)}</td><td>${esc(fval(e.value))}</td><td class="muted small">${esc(e.description)}</td></tr>`).join("")}</table></div>
+    <p class="muted small">Observation ${when((inv.observation || {}).observed_at)} from ${esc((inv.observation || {}).data_source)}; last closed candle ${when((inv.observation || {}).last_closed_candle_at)}.</p>
+    ${memoryBlock(inv.memory_json, t.direction)}
+    <h3>WHAT DID THE DEVIL'S ADVOCATE SAY?</h3><p>${badge(t.devils_advocate_verdict)} ${esc(da.summary || t.devils_advocate_summary)}</p>
     <ul class="tight">${(da.findings || []).map((f) => `<li>${badge(f.severity)} ${esc(f.claim)}</li>`).join("")}</ul>
-    <h3>What did the risk engine allow?</h3>
-    <dl class="kv"><dt>Entry</dt><dd>${usd(t.entry_price_usd)} <span class="hint">GBP/USD ${num(t.fx_entry_usd_per_gbp, 4)}</span></dd><dt>Stop</dt><dd>${usd(t.stop_price_usd)}</dd><dt>Target</dt><dd>${usd(t.target_price_usd)}</dd>
-    <dt>Position</dt><dd>${num(t.units, 6)} units · ${gbp(t.notional_gbp)}</dd><dt>Planned risk</dt><dd>${gbp(t.risk_gbp)} · planned reward ${gbp(t.planned_reward_gbp)} · net R:R ${num(t.reward_risk)}</dd>
+    <h3>WHAT DID THE RISK ENGINE ALLOW?</h3>
+    <dl class="kv"><dt>Entry</dt><dd>${usd(t.entry_price_usd)} <span class="muted">GBP/USD ${num(t.fx_entry_usd_per_gbp, 4)}</span></dd><dt>Stop</dt><dd>${usd(t.stop_price_usd)}</dd><dt>Target</dt><dd>${usd(t.target_price_usd)}</dd>
+    <dt>Position</dt><dd>${num(t.units, 6)} units · ${gbp(t.notional_gbp)}</dd><dt>Planned risk</dt><dd>${gbp(t.risk_gbp)} · reward ${gbp(t.planned_reward_gbp)} · net R:R ${num(t.reward_risk)}</dd>
+    <dt>Costs</dt><dd>${costs.fee_bps_per_side ?? "—"} bps fee · ${num(costs.slippage_bps_per_side) ?? "—"} bps slippage <span class="muted">(${esc(costs.slippage_source || "flat")})</span>${t.direction === "SHORT" ? ` · funding ${num(costs.funding_bps_per_day)} bps/day <span class="muted">(${esc(costs.funding_source)})</span>` : ""}</dd>
     <dt>Horizon</dt><dd>${esc(t.horizon_hours)}h (expires ${when(t.expires_at)})</dd></dl>
-    <h3>What happened?</h3><div id="trade-chart">${empty("Loading chart…")}</div>
-    ${o ? `<dl class="kv" style="margin-top:10px"><dt>Exit</dt><dd>${usd(o.exit_price_usd)} · ${esc(o.exit_reason)} · ${when(o.exit_time)}</dd>
-      <dt>Gross P/L</dt><dd>${signedGbp(o.gross_pnl_gbp)}</dd><dt>Estimated fees</dt><dd>${gbp(o.fees_gbp)}</dd><dt>Estimated slippage</dt><dd>${gbp(o.estimated_slippage_gbp)}</dd>
+    <h3>WHAT HAPPENED?</h3><div id="trade-chart">${empty("Loading chart…")}</div>
+    ${o ? `<dl class="kv" style="margin-top:10px"><dt>Exit</dt><dd>${usd(o.exit_price_usd)} · ${badge(o.exit_reason)} · ${when(o.exit_time)}</dd>
+      <dt>Gross P/L</dt><dd>${signedGbp(o.gross_pnl_gbp)}</dd><dt>Est. fees</dt><dd>${gbp(o.fees_gbp)}</dd><dt>Est. slippage</dt><dd>${gbp(o.estimated_slippage_gbp)}</dd>
+      ${o.funding_gbp ? `<dt>Est. funding</dt><dd>${gbp(o.funding_gbp)}</dd>` : ""}
       <dt>Net P/L</dt><dd>${signedGbp(o.net_pnl_gbp)} (${num(o.r_multiple)}R)</dd><dt>MFE / MAE</dt><dd>${pct(o.mfe_pct)} / ${pct(o.mae_pct)}</dd>
-      <dt>Thesis correct</dt><dd>${badge(o.thesis_correct || "—")}</dd><dt>Reason matched thesis</dt><dd>${esc(o.reason_matched_thesis)}</dd></dl>`
-      : `<p class="hint">Position open. Last checked ${when(t.last_checked_at)}; best price so far ${usd(t.max_favourable_price_usd)}, worst ${usd(t.max_adverse_price_usd)}.</p>`}
-    <h3>What did we learn?</h3>
-    ${l ? `<dl class="kv"><dt>Prediction (direction) correct</dt><dd>${l.prediction_correct ? "Yes" : "No"}</dd><dt>Timing</dt><dd>${esc(l.timing_assessment)}</dd>
+      <dt>Thesis correct</dt><dd>${badge(o.thesis_correct || "—")}</dd><dt>Reason matched</dt><dd>${esc(o.reason_matched_thesis)}</dd></dl>`
+      : `<p class="muted">Position open. Last checked ${when(t.last_checked_at)}; best ${usd(t.max_favourable_price_usd)}, worst ${usd(t.max_adverse_price_usd)}.</p>`}
+    <h3>WHAT DID WE LEARN?</h3>
+    ${l ? `<dl class="kv"><dt>Direction correct</dt><dd>${l.prediction_correct ? "Yes" : "No"}</dd><dt>Timing</dt><dd>${esc(l.timing_assessment)}</dd>
       <dt>Risk management</dt><dd>${esc(l.risk_assessment)}</dd><dt>Failure category</dt><dd>${esc(l.failure_category || "n/a (win)")}</dd>
-      <dt>Devil's Advocate anticipated it</dt><dd>${l.devils_advocate_anticipated ? "Yes — " + esc((d.anticipated_findings || []).map((f) => f.check).join(", ")) : "No"}</dd>
+      <dt>DA anticipated</dt><dd>${l.devils_advocate_anticipated ? "Yes — " + esc((d.anticipated_findings || []).map((f) => f.check).join(", ")) : "No"}</dd>
       <dt>Observed</dt><dd>${esc(l.observed_error)}</dd><dt>Possible cause</dt><dd>${esc(l.possible_cause)}</dd>
-      <dt>Lesson</dt><dd><strong>${esc(l.lesson)}</strong></dd><dt>Status</dt><dd>${badge(l.validation_status)} confidence ${esc(l.confidence)} · ${esc((l.review_json || {}).similar_observations)} of ${esc((l.review_json || {}).needed_for_review)} similar observations</dd></dl>
+      <dt>Lesson</dt><dd><b>${esc(l.lesson)}</b></dd><dt>Status</dt><dd>${badge(l.validation_status)} confidence ${esc(l.confidence)} · ${esc((l.review_json || {}).similar_observations)} of ${esc((l.review_json || {}).needed_for_review)} similar observations</dd></dl>
       ${(l.review_json || {}).llm_narrative ? `<div class="callout info">${esc(l.review_json.llm_narrative.narrative)}</div>` : ""}`
       : empty(o ? "Review pending." : "Post-trade review is generated when the position closes.")}
   </div>`;
@@ -342,31 +445,40 @@ async function loadTrade(id) {
 async function loadLessons() {
   const [sum, ls] = await Promise.all([api("/api/lessons/summary"), api("/api/lessons")]);
   $("lesson-policy").textContent = sum.policy;
-  $("lesson-summary").innerHTML = sum.groups.length ? `<table><tr><th>Hypothesis</th><th>Outcome category</th><th>Observations</th><th>DA anticipated</th><th>Status</th></tr>
+  $("lesson-summary").innerHTML = sum.groups.length ? `<table><tr><th>HYPOTHESIS</th><th>OUTCOME</th><th>OBSERVATIONS</th><th>DA ANTICIPATED</th><th>STATUS</th></tr>
     ${sum.groups.map((g) => `<tr><td class="mono">${esc(g.hypothesis_tag)}</td><td>${esc(g.outcome_category)}</td><td>${g.n} / ${g.needed}</td><td>${g.da_anticipated || 0}</td><td>${badge(g.status)}</td></tr>`).join("")}</table>`
     : empty("No lessons yet — lessons are created only from closed paper trades.");
-  $("lessons").innerHTML = ls.length ? ls.map((l) => `<div class="feed-item"><div class="when">${when(l.created_at)}<br>${badge(l.validation_status)}</div>
-    <div><div class="title"><a href="#trade/${l.trade_id}">${esc(l.asset)} ${esc(l.direction)}</a> · ${esc(l.failure_category || "win")}</div>
-    <div class="body">${esc(l.observed_error)}<br><strong>${esc(l.lesson)}</strong><br>${esc(l.timing_assessment)}</div></div></div>`).join("") : "";
+  $("lessons").innerHTML = ls.length ? ls.map((l) => `<div class="msg"><div class="avatar a-learn">LN</div><div>
+    <div class="who">${badge(l.validation_status)} <a href="#trade/${l.trade_id}">${esc(l.asset)} ${esc(l.direction)}</a> · ${esc(l.failure_category || "win")}<span class="when">${when(l.created_at)}</span></div>
+    <div class="text">${esc(l.observed_error)}<br><b>${esc(l.lesson)}</b><br><span class="muted">${esc(l.timing_assessment)}</span></div></div></div>`).join("") : "";
 }
 
 // ---- system --------------------------------------------------------------------
 async function loadSystem() {
-  const s = await loadStatus();
+  await loadStatus();
+  const s = STATUS;
   if (s) {
-    $("providers").innerHTML = `<table><tr><th>Source</th><th>Status</th><th>Last success</th><th>Last error</th></tr>
-      ${s.providers.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.ok ? '<span class="pos">ok</span>' : p.ok === false ? '<span class="neg">unavailable</span>' : '<span class="muted">not yet used</span>'}</td>
-      <td>${when(p.last_success)}</td><td class="hint">${esc((p.last_error || "").slice(0, 200))}</td></tr>`).join("")}</table>
-      <p class="hint">Active universe: ${esc(Object.keys(s.universe.active).join(", ") || "none")}. ${Object.keys(s.universe.removed).length ? "Removed: " + esc(Object.entries(s.universe.removed).map(([a, r]) => `${a} (${r})`).join(", ")) : ""}</p>
-      <p class="hint">News: ${esc(s.news.reason)}<br>Social: ${esc(s.social.reason)}</p>`;
-    $("monitor-meta").innerHTML = `<dl class="kv"><dt>Scheduler</dt><dd>${s.monitor.enabled ? "running" : "disabled"}</dd><dt>Interval</dt><dd>${s.monitor.interval_minutes} min</dd>
-      <dt>Next run</dt><dd>${when(s.monitor.next_run)}</dd><dt>Agents</dt><dd>${esc(s.llm.engine)}${s.llm.note ? `<br><span class="hint">${esc(s.llm.note)}</span>` : ""}</dd></dl>`;
+    $("providers").innerHTML = `<table><tr><th>SOURCE</th><th>STATUS</th><th>LAST SUCCESS</th><th>LAST ERROR</th></tr>
+      ${s.providers.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.ok ? '<span class="pos">● ok</span>' : p.ok === false ? '<span class="neg">● unavailable</span>' : '<span class="muted">○ not yet used</span>'}</td>
+      <td>${when(p.last_success)}</td><td class="muted small">${esc((p.last_error || "").slice(0, 200))}</td></tr>`).join("")}</table>
+      <p class="muted small">Active universe: ${esc(Object.keys(s.universe.active).join(", ") || "none")}. ${Object.keys(s.universe.removed).length ? "Removed: " + esc(Object.entries(s.universe.removed).map(([a, r]) => `${a} (${r})`).join(", ")) : ""}</p>
+      <p class="muted small">News: ${esc(s.news.reason)}<br>Social: ${esc(s.social.reason)}</p>`;
+    $("monitor-meta").innerHTML = `<dl class="kv"><dt>Scheduler</dt><dd>${s.monitor.enabled ? '<span class="pos">running</span>' : "disabled"}</dd><dt>Interval</dt><dd>${s.monitor.interval_minutes} min</dd>
+      <dt>Next run</dt><dd>${when(s.monitor.next_run)}</dd><dt>Agents</dt><dd>${esc(s.llm.engine)}${s.llm.note ? `<br><span class="muted small">${esc(s.llm.note)}</span>` : ""}</dd></dl>`;
   }
-  const runs = await api("/api/monitor/runs");
-  $("monitor-runs").innerHTML = runs.length ? `<div class="scroll"><table><tr><th>Started</th><th>Status</th><th>Triggers</th><th>Investigations</th><th>Closed</th><th>Errors</th></tr>
+  const [runs, ov] = await Promise.all([api("/api/monitor/runs"), api("/api/overview")]);
+  const rc = ov.risk_config;
+  $("risk-config").innerHTML = `<dl class="kv">
+    <dt>Max risk per trade</dt><dd>${rc.max_risk_per_trade_pct}% of equity (${gbp(ov.state.equity_gbp * rc.max_risk_per_trade_pct / 100)}), incl. est. costs</dd>
+    <dt>Max open positions</dt><dd>${rc.max_open_positions}</dd><dt>Max exposure</dt><dd>${rc.max_portfolio_exposure_pct}%</dd>
+    <dt>Min reward/risk</dt><dd>${rc.min_reward_risk} : 1 net of costs (experiment parameter, not optimal)</dd>
+    <dt>Daily loss limit</dt><dd>${rc.daily_loss_limit_pct}% → no new trades</dd>
+    <dt>Costs</dt><dd>${rc.fee_bps_per_side} bps fee/side · slippage from live order book (fallback ${rc.slippage_bps_per_side} bps) · short funding from perp rate</dd>
+    <dt>Shorts</dt><dd>${rc.allow_short ? "allowed (paper)" : "disabled"}</dd></dl>`;
+  $("monitor-runs").innerHTML = runs.length ? `<div class="scroll"><table><tr><th>STARTED</th><th>STATUS</th><th>TRIGGERS</th><th>INVESTIGATIONS</th><th>CLOSED</th><th>ERRORS</th></tr>
     ${runs.map((r) => `<tr><td>${when(r.started_at)}</td><td>${esc(r.status)}</td><td>${esc(Object.keys(r.triggers_json || {}).join(", ") || "none")}</td>
     <td>${(r.investigations_json || []).map((i) => `<a href="#investigation/${i.id}">${esc(i.asset)}: ${esc(i.decision)}</a>`).join(", ") || "none"}</td>
-    <td>${(r.positions_closed_json || []).length}</td><td class="hint">${esc((r.errors_json || []).join("; ").slice(0, 200))}</td></tr>`).join("")}</table></div>`
+    <td>${(r.positions_closed_json || []).length}</td><td class="muted small">${esc((r.errors_json || []).join("; ").slice(0, 200))}</td></tr>`).join("")}</table></div>`
     : empty("No monitor runs yet.");
 }
 $("monitor-btn").addEventListener("click", async () => {
@@ -377,11 +489,9 @@ $("monitor-btn").addEventListener("click", async () => {
 });
 
 // ---- boot ----------------------------------------------------------------------
-loadStatus();
-route();
+loadStatus().then(route);
 setInterval(() => {
-  const v = (location.hash.slice(1) || "overview").split("/")[0];
-  if (v === "feed") loadFeed();
-  if (v === "overview") loadOverview();
+  const v = (location.hash.slice(1) || "arena").split("/")[0];
+  if (v === "arena") loadArena();
   loadStatus();
 }, 30000);

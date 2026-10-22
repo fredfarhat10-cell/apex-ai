@@ -30,11 +30,15 @@ Coinbase ([docs](https://docs.cdp.coinbase.com/exchange/reference/exchangerestap
   first, **max 300 rows per request** (the client pages automatically)
 * `GET /products/{id}/ticker` — last trade price and time
 * `BTC-USD` and `BTC-GBP` tickers → *implied* GBP/USD rate (sanity-bounded)
+* `GET /products/{id}/book?level=2` — aggregated L2 order book, used for slippage estimates
 
 Binance ([docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints)):
 * `GET /api/v3/exchangeInfo?symbol=XXXUSDT` — `status == TRADING`
 * `GET /api/v3/klines` — max 1000 rows per request (paged)
 * `GET /api/v3/ticker/price`
+* `GET /api/v3/depth?limit=100` — L2 order book (fallback for slippage estimates)
+* `GET https://fapi.binance.com/fapi/v1/premiumIndex?symbol=XXXUSDT` — latest perpetual funding rate per 8h,
+  used to cost paper shorts. This is the public futures market-data host; no account is involved.
 
 ### Rate limits and handling
 * Coinbase public endpoints allow roughly 10 requests/second per IP. Binance allows a request-weight budget of
@@ -77,6 +81,7 @@ commercial use or redistribution, review each provider's current terms:
 * All such text is untrusted input. See the security section of `WHITEPAPER.md`.
 
 ## Network requirements
-The app needs outbound HTTPS to `api.exchange.coinbase.com`, `data-api.binance.vision` and `api.frankfurter.app`,
+The app needs outbound HTTPS to `api.exchange.coinbase.com`, `data-api.binance.vision`, `fapi.binance.com` and
+`api.frankfurter.app`,
 plus `api.anthropic.com` when the LLM is enabled. In a sandbox whose egress policy blocks these hosts, the app runs
 but shows "Data unavailable" everywhere. That is the intended degraded mode.

@@ -91,6 +91,10 @@ def create_app(engine: Engine | None = None, start_scheduler: bool | None = None
     def overview():
         return engine.overview()
 
+    @app.get("/api/arena")
+    def arena():
+        return engine.arena()
+
     @app.get("/api/feed")
     def feed(limit: int = 50, before_id: int | None = None):
         if before_id:

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from aq.execution import CostModel, flat_costs
+
 
 @dataclass
 class TradePlan:
@@ -21,26 +23,35 @@ class TradePlan:
     gross_reward_risk: float
     net_reward_risk: float
     round_trip_cost_pct: float
+    costs: dict = field(default_factory=dict)
+    horizon_hours: float = 24.0
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @property
+    def round_trip_fraction(self) -> float:
+        return self.round_trip_cost_pct / 100
 
 
 def round_trip_cost_pct(s) -> float:
     return 2 * (s.fee_bps_per_side + s.slippage_bps_per_side) / 10_000
 
 
-def build_trade_plan(direction: str, entry: float, atr: float, stop_mult: float, target_mult: float, s) -> TradePlan:
+def build_trade_plan(direction: str, entry: float, atr: float, stop_mult: float, target_mult: float, s,
+                     costs: CostModel | None = None, horizon_hours: float = 24.0) -> TradePlan:
+    costs = costs or flat_costs(s, direction)
+    rt = costs.round_trip_pct(direction, horizon_hours)
     sign = 1 if direction == "LONG" else -1
     stop = entry - sign * stop_mult * atr
     target = entry + sign * target_mult * atr
     risk_per_unit = abs(entry - stop)
     reward_per_unit = abs(target - entry)
-    cost_per_unit = entry * round_trip_cost_pct(s)
+    cost_per_unit = entry * rt
     gross = reward_per_unit / risk_per_unit if risk_per_unit > 0 else 0.0
     net = (reward_per_unit - cost_per_unit) / (risk_per_unit + cost_per_unit) if risk_per_unit > 0 else 0.0
     return TradePlan(direction, entry, stop, target, atr, stop_mult, target_mult, round(gross, 4), round(net, 4),
-                     round_trip_cost_pct(s) * 100)
+                     rt * 100, costs.to_dict(), horizon_hours)
 
 
 @dataclass
@@ -110,7 +121,7 @@ def evaluate(s, *, asset: str, proposed_action: str, da_verdict: str, plan: Trad
     if fx_usd_per_gbp and stop_ok:
         risk_budget = state.equity_gbp * s.max_risk_per_trade_pct / 100
         loss_per_unit_gbp = (abs(plan.entry_price_usd - plan.stop_price_usd)
-                             + plan.entry_price_usd * round_trip_cost_pct(s)) / fx_usd_per_gbp
+                             + plan.entry_price_usd * plan.round_trip_fraction) / fx_usd_per_gbp
         units = risk_budget / loss_per_unit_gbp
         notional = units * plan.entry_price_usd / fx_usd_per_gbp
         capacity = state.equity_gbp * s.max_portfolio_exposure_pct / 100 - state.exposure_gbp
@@ -121,7 +132,7 @@ def evaluate(s, *, asset: str, proposed_action: str, da_verdict: str, plan: Trad
             notional = units * plan.entry_price_usd / fx_usd_per_gbp
         risk_gbp = units * loss_per_unit_gbp
         reward_gbp = units * (abs(plan.target_price_usd - plan.entry_price_usd)
-                              - plan.entry_price_usd * round_trip_cost_pct(s)) / fx_usd_per_gbp
+                              - plan.entry_price_usd * plan.round_trip_fraction) / fx_usd_per_gbp
         add("exposure_capacity", notional >= s.min_position_gbp,
             f"Notional £{notional:.2f}; remaining capacity £{capacity:.2f} of {s.max_portfolio_exposure_pct}% cap"
             + (" (size capped by exposure limit)" if capped else ""))

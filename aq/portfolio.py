@@ -64,17 +64,26 @@ def evaluate_path(direction: str, entry_price: float, entry_time: datetime, stop
     return res
 
 
-def compute_pnl(trade: dict, exit_price: float, fx_exit: float, s) -> dict:
+def _trade_costs(trade: dict, s) -> tuple[float, float, float]:
+    """(fee bps/side, slippage bps/side, funding bps/day) as estimated at entry; settings as fallback."""
+    c = trade.get("costs_json") or {}
+    return (c.get("fee_bps_per_side", s.fee_bps_per_side), c.get("slippage_bps_per_side", s.slippage_bps_per_side),
+            c.get("funding_bps_per_day", 0.0) if trade["direction"] == "SHORT" else 0.0)
+
+
+def compute_pnl(trade: dict, exit_price: float, fx_exit: float, s, held_hours: float = 0.0) -> dict:
     sign = 1 if trade["direction"] == "LONG" else -1
+    fee_bps, slip_bps, fund_bps_day = _trade_costs(trade, s)
     units = trade["units"]
     entry_notional = units * trade["entry_price_usd"] / trade["fx_entry_usd_per_gbp"]
     exit_notional = units * exit_price / fx_exit
     gross = units * (exit_price - trade["entry_price_usd"]) * sign / fx_exit
-    fees = (entry_notional + exit_notional) * s.fee_bps_per_side / 10_000
-    slip = (entry_notional + exit_notional) * s.slippage_bps_per_side / 10_000
-    net = gross - fees - slip
-    return {"gross_pnl_gbp": gross, "fees_gbp": fees, "estimated_slippage_gbp": slip, "net_pnl_gbp": net,
-            "r_multiple": net / trade["risk_gbp"] if trade["risk_gbp"] else None}
+    fees = (entry_notional + exit_notional) * fee_bps / 10_000
+    slip = (entry_notional + exit_notional) * slip_bps / 10_000
+    funding = entry_notional * fund_bps_day / 10_000 * held_hours / 24
+    net = gross - fees - slip - funding
+    return {"gross_pnl_gbp": gross, "fees_gbp": fees, "estimated_slippage_gbp": slip, "funding_gbp": funding,
+            "net_pnl_gbp": net, "r_multiple": net / trade["risk_gbp"] if trade["risk_gbp"] else None}
 
 
 def excursions_pct(trade: dict, mfe_price: float, mae_price: float) -> tuple[float, float]:
@@ -85,8 +94,9 @@ def excursions_pct(trade: dict, mfe_price: float, mae_price: float) -> tuple[flo
 
 def unrealized_gbp(trade: dict, price: float, fx: float, s) -> float:
     sign = 1 if trade["direction"] == "LONG" else -1
+    fee_bps, slip_bps, _ = _trade_costs(trade, s)
     entry_notional = trade["units"] * trade["entry_price_usd"] / trade["fx_entry_usd_per_gbp"]
-    entry_costs = entry_notional * (s.fee_bps_per_side + s.slippage_bps_per_side) / 10_000
+    entry_costs = entry_notional * (fee_bps + slip_bps) / 10_000
     return trade["units"] * (price - trade["entry_price_usd"]) * sign / fx - entry_costs
 
 
@@ -168,6 +178,7 @@ class Portfolio:
             "data_source": data_source, "last_checked_at": iso(entry_time),
             "max_favourable_price_usd": position["entry_price_usd"],
             "max_adverse_price_usd": position["entry_price_usd"],
+            "costs_json": position.get("costs") or {},
         }
         self.db.insert("paper_trades", row)
         return self.db.one("SELECT * FROM paper_trades WHERE id = ?", (tid,))
@@ -179,7 +190,8 @@ class Portfolio:
 
     def close_trade(self, trade: dict, *, exit_reason: str, exit_price: float, exit_time: datetime, fx_exit: float,
                     mfe_price: float, mae_price: float, path: list[Candle], data_source: str) -> dict:
-        pnl = compute_pnl(trade, exit_price, fx_exit, self.s)
+        held = (exit_time - parse_iso(trade["entry_time"])).total_seconds() / 3600
+        pnl = compute_pnl(trade, exit_price, fx_exit, self.s, held_hours=max(held, 0.0))
         mfe_pct, mae_pct = excursions_pct(trade, mfe_price, mae_price)
         with self.db.transaction() as db:
             db.insert("trade_outcomes", {

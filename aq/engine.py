@@ -20,7 +20,9 @@ from aq.analytics import (DISCLAIMER, btc_buy_and_hold, drawdown_warnings, equit
 from aq.clock import Clock, iso, parse_iso
 from aq.data.base import DataUnavailable, closed_only
 from aq.features import InsufficientData, compute_features, detect_triggers, market_regime
+from aq.execution import estimate_costs
 from aq.learning import LearningLoop
+from aq.memory import recall
 from aq.logging_setup import log
 from aq.portfolio import Portfolio, evaluate_path
 from aq.signals.base import UnavailableNewsProvider, UnavailableSocialProvider
@@ -140,15 +142,16 @@ class Engine:
         regime["unavailable_assets"] = uni_err
         news_status = self.news.status()
 
-        scout, scout_meta = self.scout.investigate(asset, features, regime, news_status)
-        plan = None
-        if scout.proposed_action in ("LONG", "SHORT"):
-            plan = risk_engine.build_trade_plan(scout.proposed_action, spot.price_usd, features["atr_14"],
-                                                scout.stop_atr_multiple, scout.target_atr_multiple, self.s)
-        da, da_meta = self.da.challenge(asset, features, scout, plan, regime)
+        memory = {d: recall(self.db, d, features, regime.get("label"), now, self.s) for d in ("LONG", "SHORT")}
+        scout, scout_meta = self.scout.investigate(asset, features, regime, news_status, memory)
 
         prices = self._open_position_prices()
         state = self.portfolio.state(prices, fx.usd_per_gbp if fx else None)
+        plan, cost_notes = None, None
+        if scout.proposed_action in ("LONG", "SHORT"):
+            plan, cost_notes = self._plan_with_costs(asset, scout, spot.price_usd, features["atr_14"],
+                                                     state["equity_gbp"], fx.usd_per_gbp if fx else None)
+        da, da_meta = self.da.challenge(asset, features, scout, plan, regime, memory.get(scout.proposed_action))
         st = risk_engine.PortfolioState(state["equity_gbp"], state["exposure_gbp"], state["open_positions"],
                                         state["open_assets"], state["daily_pnl_gbp"], state["day_start_equity_gbp"])
         decision = risk_engine.evaluate(self.s, asset=asset, proposed_action=scout.proposed_action,
@@ -175,7 +178,7 @@ class Engine:
                 "invalidation_conditions_json": [c.model_dump() for c in scout.invalidation_conditions],
                 "proposed_action": scout.proposed_action, "horizon_hours": scout.horizon_hours,
                 "research_confidence": scout.research_confidence, "final_decision": final, "final_reason": reason,
-                "status": "complete"})
+                "memory_json": {**memory, "cost_estimation": cost_notes}, "status": "complete"})
             db.insert("challenges", {"investigation_id": inv_id, "created_at": iso(self.clock.now()),
                                      "engine": da.engine, "devils_advocate_output_json": {**da.model_dump(),
                                                                                          "llm_meta": da_meta},
@@ -201,6 +204,7 @@ class Engine:
                         "reasons": [f.claim for f in da.findings if f.severity in ("blocking", "major")]},
                        "investigation", inv_id)
         if trade:
+            self._snapshot()
             self.event("PAPER_TRADE", f"{asset} {trade['direction']} opened", asset, {
                 "direction": trade["direction"], "entry": trade["entry_price_usd"], "stop": trade["stop_price_usd"],
                 "target": trade["target_price_usd"], "risk_gbp": trade["risk_gbp"], "thesis": trade["thesis"],
@@ -209,6 +213,34 @@ class Engine:
             self.event("NO_TRADE", f"{asset}: proposed {scout.proposed_action} blocked — NO TRADE", asset,
                        {"reason": reason}, "investigation", inv_id)
         return self.get_investigation(inv_id)
+
+    def _plan_with_costs(self, asset, scout, entry, atr, equity_gbp, fx):
+        """Size a provisional position with flat costs, then re-price costs from the live order book (and
+        funding for shorts) for that size, and rebuild the plan. Falls back to flat assumptions, labelled."""
+        d = scout.proposed_action
+        prelim = risk_engine.build_trade_plan(d, entry, atr, scout.stop_atr_multiple, scout.target_atr_multiple,
+                                              self.s, horizon_hours=scout.horizon_hours)
+        stop_frac = abs(entry - prelim.stop_price_usd) / entry + prelim.round_trip_fraction
+        notional_gbp = min(equity_gbp * self.s.max_risk_per_trade_pct / 100 / stop_frac,
+                           equity_gbp * self.s.max_portfolio_exposure_pct / 100)
+        notional_usd = notional_gbp * (fx or 1.0)
+        notes = {"provisional_notional_usd": notional_usd}
+        book = funding = fsrc = None
+        if self.s.use_order_book:
+            try:
+                book = self.market.get_order_book(asset)
+            except DataUnavailable as e:
+                notes["order_book_error"] = str(e)
+        if d == "SHORT":
+            try:
+                funding, fsrc = self.market.get_funding_rate(asset)
+            except DataUnavailable as e:
+                notes["funding_error"] = str(e)
+        costs = estimate_costs(self.s, d, notional_usd, book, funding, fsrc)
+        notes["costs"] = costs.to_dict()
+        plan = risk_engine.build_trade_plan(d, entry, atr, scout.stop_atr_multiple, scout.target_atr_multiple,
+                                            self.s, costs=costs, horizon_hours=scout.horizon_hours)
+        return plan, notes
 
     @staticmethod
     def _headline(scout) -> str:
@@ -303,6 +335,7 @@ class Engine:
                                     else (price / t["entry_price_usd"] - 1) * 100),
                "max_bar_move_atr": max_bar / atr if atr else None}
         lesson = self.learning.review(t, out, ctx)
+        self._snapshot()
         out = self.db.one("SELECT * FROM trade_outcomes WHERE trade_id = ?", (t["id"],))
         self.event("TRADE_CLOSED", f"{t['asset']} {t['direction']} closed ({reason}) "
                                    f"{'+' if out['net_pnl_gbp'] >= 0 else '−'}£{abs(out['net_pnl_gbp']):.2f}",
@@ -312,6 +345,12 @@ class Engine:
         self.event("LESSON", f"{t['asset']}: lesson recorded ({lesson['validation_status']})", t["asset"],
                    {"lesson": lesson["lesson"], "failure_category": lesson["failure_category"]}, "trade", t["id"])
         return out
+
+    def _snapshot(self) -> None:
+        fx = self._fx()
+        st = self.portfolio.state(self._open_position_prices(), fx.usd_per_gbp if fx else None)
+        if not st["unpriced_positions"]:
+            self.portfolio.snapshot(st, fx.usd_per_gbp if fx else None)
 
     def run_followups(self) -> int:
         n = 0
@@ -350,9 +389,12 @@ class Engine:
                 if tr:
                     triggers[asset] = tr
             cutoff = iso(self.clock.now() - timedelta(minutes=self.s.investigation_cooldown_minutes))
+            held = {t["asset"] for t in self.portfolio.open_trades()}
             for asset, tr in sorted(triggers.items(), key=lambda kv: -len(kv[1])):
                 if len(investigations) >= self.s.max_investigations_per_run:
                     break
+                if asset in held:  # the risk engine would block a duplicate anyway: don't spend an agent call
+                    continue
                 recent = self.db.one("SELECT id FROM investigations WHERE asset = ? AND created_at >= ? "
                                      "AND status = 'complete'", (asset, cutoff))
                 if recent:
@@ -393,8 +435,15 @@ class Engine:
                 continue
             try:
                 q = self.market.get_spot_price(a)
+                chg = None
+                try:
+                    c, _ = self._closed_1h(a)
+                    if len(c) >= 25:
+                        chg = (q.price_usd / c[-25].close - 1) * 100
+                except DataUnavailable:
+                    pass
                 out["assets"].append({"asset": a, "price_usd": q.price_usd, "timestamp": iso(q.timestamp),
-                                      "source": q.source, "available": True})
+                                      "source": q.source, "available": True, "change_24h_pct": chg})
             except DataUnavailable as e:
                 out["assets"].append({"asset": a, "available": False, "error": str(e)})
         return out
@@ -437,6 +486,49 @@ class Engine:
                 "risk_config": {k: getattr(self.s, k) for k in (
                     "max_risk_per_trade_pct", "max_open_positions", "max_portfolio_exposure_pct", "min_reward_risk",
                     "daily_loss_limit_pct", "fee_bps_per_side", "slippage_bps_per_side", "allow_short")}}
+
+    def arena(self) -> dict:
+        """Race view: AI fund vs baselines on one % axis, from the same fixed start, plus a leaderboard."""
+        ov = self.overview()
+        fund, b = ov["fund"], ov["benchmarks"]
+        start_cap = fund["starting_capital"]
+        snaps = self.db.all("SELECT taken_at, equity_gbp FROM equity_snapshots ORDER BY taken_at")
+        ai = [(fund["created_at"], 0.0)] + [(x["taken_at"], (x["equity_gbp"] / start_cap - 1) * 100) for x in snaps]
+        ai.append((iso(self.clock.now()), (ov["state"]["equity_gbp"] / start_cap - 1) * 100))
+        series = [{"id": "ai", "name": "Adaptive Quant (AI)", "unit": "GBP, net of est. costs", "points": ai}]
+        if fund.get("benchmark_start_at"):
+            start = parse_iso(fund["benchmark_start_at"])
+            try:
+                now = self.clock.now()
+                c, _ = self.market.get_candles("BTC", "1h", start=start - timedelta(hours=1), end=now)
+                c = [x for x in closed_only(c, now) if x.open_time >= start]
+                p0 = fund["benchmark_btc_price_usd"]
+                pts = [(fund["benchmark_start_at"], 0.0)] + [(x.close_time.isoformat(), (x.close / p0 - 1) * 100)
+                                                             for x in c]
+                if b["btc_buy_and_hold"].get("available"):
+                    pts.append((iso(now), b["btc_buy_and_hold"]["return_pct_usd"]))
+                series.append({"id": "hodl", "name": "BTC buy & hold", "unit": "USD price return", "points": pts})
+            except DataUnavailable:
+                pass
+            if b["sma_baseline"].get("available"):
+                series.append({"id": "sma", "name": "SMA50 trend bot", "unit": "USD, costs incl.",
+                               "points": b["sma_baseline"]["curve"]})
+        tm = ov["trade_metrics"]
+        board = [{"id": "ai", "name": "Adaptive Quant (AI)", "return_pct": b.get("ai_strategy_return_pct_gbp",
+                                                                                  ov["equity_metrics"]["total_return_pct"]),
+                  "trades": tm["number_of_trades"], "win_rate_pct": tm["win_rate_pct"],
+                  "value_gbp": ov["state"]["equity_gbp"], "note": tm["evidence_quality"]["label"]}]
+        bh = b["btc_buy_and_hold"]
+        board.append({"id": "hodl", "name": "BTC buy & hold", "return_pct": bh.get("return_pct_gbp"),
+                      "trades": 1 if bh.get("available") else 0, "win_rate_pct": None,
+                      "value_gbp": bh.get("value_gbp"), "note": "GBP" if bh.get("available") else bh.get("reason")})
+        sm = b["sma_baseline"]
+        board.append({"id": "sma", "name": "SMA50 trend bot", "return_pct": sm.get("return_pct_usd"),
+                      "trades": sm.get("switches"), "win_rate_pct": None,
+                      "value_gbp": start_cap * (1 + sm["return_pct_usd"] / 100) if sm.get("available") else None,
+                      "note": "USD price return" if sm.get("available") else sm.get("reason")})
+        board.sort(key=lambda r: (r["return_pct"] is None, -(r["return_pct"] or 0)))
+        return {"overview": ov, "series": series, "leaderboard": board}
 
     def get_trade(self, trade_id: str) -> dict | None:
         t = self.db.one("SELECT * FROM paper_trades WHERE id = ?", (trade_id,))

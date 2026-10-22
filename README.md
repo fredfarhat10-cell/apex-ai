@@ -16,23 +16,31 @@ pip install -r requirements.txt
 cp .env.example .env            # optional: add ANTHROPIC_API_KEY to enable LLM agents
 python scripts/smoke_live.py    # checks the real data providers are reachable from your network
 python -m aq                    # dashboard + API at http://127.0.0.1:8000
-python -m pytest tests -q       # 46 tests, fully offline
+python -m pytest tests -q       # 54 tests, fully offline
 ```
 Requires Python ≥ 3.11 and outbound HTTPS to `api.exchange.coinbase.com`, `data-api.binance.vision` and
 `api.frankfurter.app` (plus `api.anthropic.com` when the LLM is enabled).
+
+## Dashboard ("Arena")
+The design follows the viral AI-trading-arena style: a dark terminal look, a scrolling live price ticker, and a big
+account value. A **return race chart** puts the AI fund against BTC buy-and-hold and an SMA trend bot from the same
+fixed start. Alongside it are a **leaderboard**, position cards with a stop↔target bar, **completed trades**, an
+**Agent Chat** (Scout / Devil's Advocate / Risk Engine / Learning messages) and a **system log**. Every message,
+line and number is a stored backend record. The ticker scrolls real quotes, and the monitor countdown is the real
+scheduler time.
 
 ## Acceptance demo (the 12 steps)
 | Step | Where |
 |---|---|
 | 1. Open the app | `python -m aq` → http://127.0.0.1:8000 |
-| 2. Real prices | Overview → *Market prices* (source and timestamp shown per asset) |
-| 3. Run investigation | Research → pick an asset → **Run investigation** |
+| 2. Real prices | Ticker tape + positions (source and timestamps on each investigation) |
+| 3. Run investigation | Arena → pick an asset chip → **▶ RUN** |
 | 4–6. Scout → Devil's Advocate → Risk Engine | Rendered as a five-step chain with every check |
 | 7. TRADE / NO TRADE | Decision step + feed event |
-| 8. Simulated position | Trades tab; Overview *Open positions* |
+| 8. Simulated position | Arena → *Positions* cards |
 | 9. Close on real data | Automatic: the monitor checks stop, target and horizon on real 5m candles. Manual: trade page → *Close at current market price* |
 | 10–11. Post-trade review + lesson | Trade page → *What did we learn?*; Lessons tab |
-| 12. Dashboard updates | Overview metrics, benchmarks, feed |
+| 12. Dashboard updates | Account value, race chart, leaderboard, agent chat |
 
 The automated monitor (every 15 min) runs cheap deterministic filters first. It calls the agents only for
 assets that trip a trigger, and applies a per-asset cooldown.
@@ -46,6 +54,8 @@ aq/
   features.py          deterministic features, market regime, monitor triggers
   agents/              Scout, Devil's Advocate, typed schemas, LLM wrapper (no tools)
   risk.py              deterministic risk engine + trade plan
+  execution.py         cost model: order-book slippage walk, short funding
+  memory.py            experience memory: similar past trades at decision time (no lookahead)
   portfolio.py         paper positions, conservative exit evaluation, P/L
   learning.py          post-trade diagnosis, lessons, evidence accumulation
   analytics.py         sample-size-gated metrics, BTC buy-and-hold + SMA baselines

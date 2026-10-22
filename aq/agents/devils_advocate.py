@@ -30,6 +30,9 @@ Address: (1) what is wrong with the thesis, (2) alternative explanations, (3) wh
 (7) conditions under which this strategy is historically unreliable, (8) evidence that would invalidate the trade,
 (9) any specific reason NOT to trade.
 
+Experience memory (similar past paper trades, outcomes known before now) is provided. Use it only when the
+sample is large enough to matter; a single past loss is not evidence.
+
 Return APPROVE, VETO or MONITOR. Rules:
 - A VETO must contain at least one finding with severity 'blocking' or 'major' that cites real feature keys.
 - You cannot VETO merely because uncertainty exists or data (e.g. news) is unavailable.
@@ -39,7 +42,8 @@ The deterministic checks already run are included; you may agree, disagree, or a
 """
 
 
-def rule_checks(f: dict, scout: ScoutReport, plan: TradePlan, regime: dict, s) -> list[DAFinding]:
+def rule_checks(f: dict, scout: ScoutReport, plan: TradePlan, regime: dict, s,
+                memory: dict | None = None) -> list[DAFinding]:
     out: list[DAFinding] = []
     sign = 1 if scout.proposed_action == "LONG" else -1
     add = lambda *a: out.append(DAFinding(check=a[0], category=a[1], severity=a[2], claim=a[3], evidence_keys=a[4]))  # noqa
@@ -89,6 +93,16 @@ def rule_checks(f: dict, scout: ScoutReport, plan: TradePlan, regime: dict, s) -
         add("costs_vs_range", "reward_risk", "minor",
             f"ATR is {f['atr_pct']:.2f}% vs round-trip cost {plan.round_trip_cost_pct:.2f}% — costs are a large "
             "share of expected movement.", ["atr_pct"])
+    ms = (memory or {}).get("summary")
+    if ms and ms["similar_trades"]:
+        if ms["sufficient"] and (ms["expectancy_r"] or 0) < 0:
+            add("history_negative", "historical_unreliability", "major",
+                f"Experience memory: {ms['similar_trades']} similar past {ms['direction']} trades averaged "
+                f"{ms['expectancy_r']:+.2f}R ({ms['wins']}W/{ms['losses']}L); most common failure: "
+                f"{ms['most_common_failure']}.", [])
+        else:
+            add("history_note", "historical_unreliability", "info",
+                f"Experience memory: {ms['note']} Not weighed in the verdict.", [])
     if any(e.category == "macro_news_catalyst" for e in scout.possible_explanations):
         add("no_news", "data_quality", "info",
             "Catalyst cannot be verified (news unavailable). Recorded as a limitation, not a veto reason.", [])
@@ -126,13 +140,14 @@ class DevilsAdvocate:
         self.llm = llm
         self.s = settings
 
-    def challenge(self, asset: str, f: dict, scout: ScoutReport, plan: TradePlan | None, regime: dict) -> tuple[DAReport, dict]:
+    def challenge(self, asset: str, f: dict, scout: ScoutReport, plan: TradePlan | None, regime: dict,
+                  memory: dict | None = None) -> tuple[DAReport, dict]:
         meta = {"llm_usage": None, "llm_error": None}
         if scout.proposed_action == "NO_TRADE" or plan is None:
             return DAReport(engine="n/a", verdict="NOT_REQUIRED",
                             summary="Scout proposed NO TRADE; there is no trade to challenge (no LLM call made)."), meta
 
-        findings = rule_checks(f, scout, plan, regime, self.s)
+        findings = rule_checks(f, scout, plan, regime, self.s, memory)
         rv = rule_verdict(findings)
         report = DAReport(engine=RULE_ENGINE, verdict=rv, findings=findings, rule_verdict=rv,
                           what_would_change_verdict="Resolution of the major/blocking findings listed.",
@@ -145,6 +160,7 @@ class DevilsAdvocate:
                 as_data_block("features", f),
                 as_data_block("market_regime", regime),
                 as_data_block("deterministic_checks", [x.model_dump() for x in findings]),
+                as_data_block("experience_memory", memory or {}),
             ])
             try:
                 out, usage = self.llm.structured(DA_SYSTEM, user, DALLMOutput)
