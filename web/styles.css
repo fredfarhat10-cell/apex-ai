@@ -211,3 +211,9 @@ details summary { cursor: pointer; color: var(--link); font-size: 13px; }
 .pi { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 9px; font-style: normal; font-weight: 700; flex: none; }
 .brand-name { white-space: nowrap; }
 @media (max-width: 600px) { .brand-name { display: none; } }
+
+.live-wrap { margin-left: auto; }
+.live-chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: var(--panel2); color: var(--muted); white-space: nowrap; }
+.live-chip.on { color: var(--up); background: var(--up-bg); }
+.live-chip.off { color: var(--warn); background: var(--warn-bg); }
+.pf-fx { margin-top: 8px; font-size: 13px; color: var(--muted); }

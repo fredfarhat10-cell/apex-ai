@@ -83,6 +83,15 @@ class Engine:
             log(logger, logging.WARNING, "fx_unavailable", error=str(e))
             return None
 
+    @staticmethod
+    def _fx_view(fx) -> dict | None:
+        """FX with provenance. Coinbase-implied rates are live market rates; ECB reference rates are daily."""
+        if not fx:
+            return None
+        return {"usd_per_gbp": fx.usd_per_gbp, "timestamp": iso(fx.timestamp), "source": fx.source,
+                "realtime": fx.source.startswith("coinbase"),
+                "refresh_seconds": 60 if fx.source.startswith("coinbase") else None}
+
     def ensure_benchmark(self) -> None:
         if self.portfolio.ensure_fund().get("benchmark_start_at"):
             return
@@ -475,7 +484,7 @@ class Engine:
             bench["period_days"] = (now - start).total_seconds() / 86400
         else:
             bench["sma_baseline"] = {"available": False, "reason": "Benchmark period not started (no BTC data yet)"}
-        return {"disclaimer": DISCLAIMER, "fund": fund, "state": st, "fx": fx.__dict__ if fx else None,
+        return {"disclaimer": DISCLAIMER, "fund": fund, "state": st, "fx": self._fx_view(fx),
                 "equity_metrics": em, "trade_metrics": trade_metrics(closed, self.s), "benchmarks": bench,
                 "warnings": drawdown_warnings(em["current_drawdown_pct"], em["max_drawdown_pct"], self.s)
                 + ([f"Open positions without a current price (valued at entry): {st['unpriced_positions']}"]
@@ -660,7 +669,8 @@ class Engine:
         txs = self.db.all("SELECT t.id, t.asset, t.direction, t.entry_time, t.entry_price_usd, t.units, t.notional_gbp, "
                           "t.status, o.exit_time, o.exit_price_usd, o.exit_reason, o.net_pnl_gbp FROM paper_trades t "
                           "LEFT JOIN trade_outcomes o ON o.trade_id = t.id ORDER BY t.entry_time DESC LIMIT 50")
-        return {"disclaimer": ov["disclaimer"], "balance_gbp": st["equity_gbp"],
+        return {"disclaimer": ov["disclaimer"], "balance_gbp": st["equity_gbp"], "fx": ov.get("fx"),
+                "prices_as_of": max((p.get("timestamp") or "" for p in prices.values()), default=None) or None,
                 "starting_capital_gbp": fund["starting_capital"],
                 "change_24h_gbp": st["equity_gbp"] - base24 if base24 is not None else None,
                 "change_24h_pct": (st["equity_gbp"] / base24 - 1) * 100 if base24 else None,

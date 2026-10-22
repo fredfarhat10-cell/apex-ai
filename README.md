@@ -39,6 +39,12 @@ Requires Python ≥ 3.11 and outbound HTTPS to `api.exchange.coinbase.com`, `dat
   * **Your Assets** (price, 24h %, holdings, average buy price, P/L), **Transactions**, and a comparison against
     BTC buy-and-hold and an SMA trend bot from the same fixed start.
 
+**Real-time prices:** the Trade page streams ticks straight from the exchange in your browser (Binance public
+WebSocket; Coinbase's as fallback). The price, 24h stats, forming candle, order book and markets list update live,
+with a "LIVE" badge showing the last tick time. If the stream drops, the page falls back to polling every 15 s.
+GBP/USD is the live Coinbase-implied rate, refreshed every 60 s and shown on the Portfolio page with its source and
+time. If only the ECB daily reference rate is available, it is labelled "not real time".
+
 Everything is rendered from stored records or live provider data. When data is missing the UI says so; the 24h
 change, for example, shows "not enough history" for a fund younger than a day.
 

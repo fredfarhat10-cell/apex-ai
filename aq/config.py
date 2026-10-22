@@ -47,7 +47,7 @@ class Settings:
     base_currency: str = "GBP"
     starting_capital: float = 10_000.0
     universe: tuple[str, ...] = ("BTC", "ETH", "SOL", "BNB", "XRP", "DOGE")
-    providers: tuple[str, ...] = ("coinbase", "binance")
+    providers: tuple[str, ...] = ("binance", "coinbase")
 
     # Risk engine (deterministic; the LLM cannot override these)
     max_risk_per_trade_pct: float = 0.5
@@ -113,7 +113,7 @@ def get_settings() -> Settings:
         db_path=os.environ.get("AQ_DB_PATH", Settings.db_path),
         starting_capital=_f("AQ_STARTING_CAPITAL", 10_000.0),
         universe=_list("AQ_UNIVERSE", "BTC,ETH,SOL,BNB,XRP,DOGE"),
-        providers=_list("AQ_PROVIDERS", "coinbase,binance"),
+        providers=_list("AQ_PROVIDERS", "binance,coinbase"),
         max_risk_per_trade_pct=_f("AQ_MAX_RISK_PER_TRADE_PCT", 0.5),
         max_open_positions=_i("AQ_MAX_OPEN_POSITIONS", 3),
         max_portfolio_exposure_pct=_f("AQ_MAX_PORTFOLIO_EXPOSURE_PCT", 30.0),

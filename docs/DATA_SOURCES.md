@@ -8,8 +8,8 @@ and no analysis or trade is produced from missing data.
 
 | Order | Provider | Base URL | Key needed | Used for |
 |---|---|---|---|---|
-| 1 (primary) | Coinbase Exchange public REST | `https://api.exchange.coinbase.com` | No | product list, 1h/5m candles, ticker, implied GBP/USD |
-| 2 (fallback) | Binance public market-data endpoint | `https://data-api.binance.vision` | No | exchangeInfo, klines, ticker |
+| 1 (primary) | Binance public market-data endpoint | `https://data-api.binance.vision` | No | exchangeInfo, klines, ticker, depth |
+| 2 (fallback) | Coinbase Exchange public REST | `https://api.exchange.coinbase.com` | No | product list, candles, ticker, book, implied GBP/USD |
 
 Both are wrapped behind the `MarketDataProvider` interface (`aq/data/base.py`), so another provider is one class.
 The service (`aq/data/service.py`) tries providers in order per request and records which source served each
@@ -53,9 +53,20 @@ Configured with `AQ_UNIVERSE` (default `BTC,ETH,SOL,BNB,XRP,DOGE`). Any asset no
 **removed automatically** and shown with its reason. For example, BNB is not listed on Coinbase, so it is served by
 Binance when Binance is reachable, and removed otherwise.
 
+## Real-time streaming (browser)
+The dashboard's Trade page opens a WebSocket from the viewer's browser directly to the exchange that served the chart:
+* Binance: `wss://data-stream.binance.vision/stream?streams=<sym>@ticker/<sym>@kline_<iv>/<sym>@depth20@100ms`
+  (public market-data streams, no key).
+* Coinbase (fallback source): `wss://ws-feed.exchange.coinbase.com`, `ticker` channel.
+
+Ticks update the pair header, the forming candle and (Binance) the order book live. The page shows "LIVE" with
+the time of the last tick, and falls back to polling the backend every 15 s if the stream drops. The backend
+never trades on stream ticks; decisions still use closed candles and a fresh spot quote.
+
 ## FX (GBP/USD)
 The fund is denominated in GBP; crypto prices are in USD. Sources, in order:
-1. Coinbase implied rate: `BTC-USD / BTC-GBP`.
+1. Coinbase implied rate: `BTC-USD / BTC-GBP`. This is a live market rate, refreshed every 60 s and shown in the UI
+   with its source and timestamp.
 2. [Frankfurter](https://www.frankfurter.app) — ECB reference rates. Free and keyless, but they update **once per
    business day**, so intraday FX moves are not captured.
 

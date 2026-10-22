@@ -45,6 +45,7 @@ function route() {
   const tab = view === "position" ? "trade" : view === "investigation" ? "research" : view;
   document.querySelectorAll("#links a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
   if (view === "trade" && arg) curAsset = arg.toUpperCase();
+  if (view !== "trade") stopStreams();
   ({ trade: loadTrade, portfolio: loadPortfolio, research: loadResearch, lessons: loadLessons, system: loadSystem,
      position: () => loadPosition(arg), investigation: () => loadInvestigationDetail(arg) })[view]();
 }
@@ -58,6 +59,102 @@ async function loadStatus() {
     $("status-line").innerHTML = `<span class="dot ${live ? "live" : "down"}"></span>${live ? "Live market data" : "Market data offline"} · agents ${esc(STATUS.llm.engine)}`;
   } catch (e) { $("status-line").innerHTML = `<span class="dot down"></span>API unreachable`; }
   return STATUS;
+}
+
+// =============================== LIVE STREAMS ===============================
+// Real-time ticks come straight from the exchange that served the chart (public market-data WebSockets, no keys).
+// They only update what is displayed; trading decisions are made by the backend on closed candles.
+const LIVE = { ws: null, key: "", mws: null, mkey: "", lastTick: 0, depthAt: 0, redrawT: null };
+let LAST_M = null;
+const STEP_MS = { "5m": 3e5, "1h": 36e5, "1d": 864e5 };
+function setChange(chg, price) {
+  const dir = chg == null ? "" : chg >= 0 ? "up" : "down";
+  if ($("px-chg")) { $("px-chg").className = `v ${dir}`; $("px-chg").textContent = chg == null ? "—" : `${chg >= 0 ? "+" : ""}${num(chg)}%`; }
+  if ($("px-last") && price != null) { $("px-last").className = `lastpx ${dir}`; $("px-last").innerHTML = `${fmtPx(price)}<span class="usd">$${fmtPx(price)}</span>`; }
+}
+function setLive(on) {
+  const c = $("live-chip"); if (!c) return;
+  c.className = `live-chip ${on ? "on" : "off"}`;
+  c.textContent = on ? `● LIVE · ${new Date(LIVE.lastTick).toLocaleTimeString("en-GB")}` : "○ Stream offline · polling every 15s";
+}
+function stopStreams() {
+  for (const k of ["ws", "mws"]) { if (LIVE[k]) { LIVE[k].onclose = null; try { LIVE[k].close(); } catch (e) { /* already closed */ } LIVE[k] = null; } }
+  LIVE.key = ""; LIVE.mkey = "";
+}
+function onTicker(t) {
+  LIVE.lastTick = t.time || Date.now();
+  setChange(t.chg, t.price);
+  if (t.high != null) $("px-high").textContent = fmtPx(t.high);
+  if (t.low != null) $("px-low").textContent = fmtPx(t.low);
+  if (t.vb != null) $("px-vb").textContent = compact(t.vb);
+  if (t.vq != null) $("px-vq").textContent = compact(t.vq);
+  if ($("mk-px-" + curAsset)) { $("mk-px-" + curAsset).textContent = fmtPx(t.price); $("mk-chg-" + curAsset).innerHTML = pct(t.chg); }
+  document.title = `${fmtPx(t.price)} | ${curAsset}/USD | Adaptive Quant`;
+  setLive(true);
+}
+function scheduleRedraw() {
+  if (LIVE.redrawT) return;
+  LIVE.redrawT = setTimeout(() => { LIVE.redrawT = null; if (LAST_M && !document.querySelector("#csvg:hover")) drawCandles(LAST_M); }, 1000);
+}
+function upsertCandle(c) {
+  const cs = LAST_M.candles, last = cs[cs.length - 1];
+  if (last && Date.parse(last.t) === Date.parse(c.t)) cs[cs.length - 1] = c;
+  else if (!last || Date.parse(c.t) > Date.parse(last.t)) { if (last) last.closed = true; cs.push(c); cs.shift(); }
+  scheduleRedraw();
+}
+function priceIntoCandle(p, t) {
+  const cs = LAST_M.candles, last = cs[cs.length - 1];
+  if (!last) return;
+  if (t >= Date.parse(last.t) + STEP_MS[curIv]) { loadMarket(); return; } // new bar: refetch real OHLCV
+  last.c = p; last.h = Math.max(last.h, p); last.l = Math.min(last.l, p);
+  scheduleRedraw();
+}
+function startStream() {
+  if (!LAST_M) return;
+  const src = LAST_M.stats.source, key = `${src}:${curAsset}:${curIv}`;
+  if (key === LIVE.key && LIVE.ws && LIVE.ws.readyState <= 1) return;
+  if (LIVE.ws) { LIVE.ws.onclose = null; try { LIVE.ws.close(); } catch (e) { /* ignore */ } }
+  LIVE.key = key;
+  try {
+    if (src === "binance") {
+      const s = curAsset.toLowerCase() + "usdt";
+      LIVE.ws = new WebSocket(`wss://data-stream.binance.vision/stream?streams=${s}@ticker/${s}@kline_${curIv}/${s}@depth20@100ms`);
+      LIVE.ws.onmessage = (ev) => {
+        const { stream, data } = JSON.parse(ev.data);
+        if (stream.endsWith("@ticker")) onTicker({ price: +data.c, chg: +data.P, high: +data.h, low: +data.l, vb: +data.v, vq: +data.q, time: data.E });
+        else if (stream.includes("@kline_")) { const k = data.k; upsertCandle({ t: new Date(k.t).toISOString(), o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.v, closed: k.x }); }
+        else if (stream.includes("@depth")) { LIVE.depthAt = Date.now(); renderBook({ bids: data.bids, asks: data.asks, source: "binance live", timestamp: new Date().toISOString() }); }
+      };
+    } else if (src === "coinbase") {
+      LIVE.ws = new WebSocket("wss://ws-feed.exchange.coinbase.com");
+      LIVE.ws.onopen = () => LIVE.ws.send(JSON.stringify({ type: "subscribe", product_ids: [`${curAsset}-USD`], channels: ["ticker"] }));
+      LIVE.ws.onmessage = (ev) => {
+        const d = JSON.parse(ev.data);
+        if (d.type !== "ticker") return;
+        const p = +d.price, t = Date.parse(d.time) || Date.now();
+        onTicker({ price: p, chg: d.open_24h ? (p / +d.open_24h - 1) * 100 : null, high: +d.high_24h, low: +d.low_24h, vb: +d.volume_24h, vq: null, time: t });
+        priceIntoCandle(p, t);
+      };
+    } else { setLive(false); return; }
+    LIVE.ws.onerror = () => setLive(false);
+    LIVE.ws.onclose = () => { setLive(false); LIVE.key = ""; };
+  } catch (e) { setLive(false); }
+}
+function startMarketsStream(assets) {
+  const key = assets.join(",");
+  if (!assets.length || (key === LIVE.mkey && LIVE.mws && LIVE.mws.readyState <= 1)) return;
+  if (LIVE.mws) { LIVE.mws.onclose = null; try { LIVE.mws.close(); } catch (e) { /* ignore */ } }
+  LIVE.mkey = key;
+  try {
+    LIVE.mws = new WebSocket(`wss://data-stream.binance.vision/stream?streams=${assets.map((a) => a.toLowerCase() + "usdt@miniTicker").join("/")}`);
+    LIVE.mws.onmessage = (ev) => {
+      const { data } = JSON.parse(ev.data), a = data.s.replace(/USDT$/, "");
+      if (!$("mk-px-" + a)) return;
+      $("mk-px-" + a).textContent = fmtPx(+data.c);
+      $("mk-chg-" + a).innerHTML = pct((+data.c / +data.o - 1) * 100);
+    };
+    LIVE.mws.onclose = () => { LIVE.mkey = ""; };
+  } catch (e) { /* polling continues */ }
 }
 
 // =============================== TRADE (Binance) ===============================
@@ -87,17 +184,20 @@ async function loadMarket() {
     return;
   }
   const s = m.stats, last = m.candles[m.candles.length - 1];
-  const dir = s.change_24h_pct == null ? "" : s.change_24h_pct >= 0 ? "up" : "down";
+  LAST_M = m;
   $("pairbar").innerHTML = `<div class="pair">${coinIcon(curAsset).replace("<i ", '<i class="pi" ')}<div><div class="sym">${esc(curAsset)}/USD</div><div class="src">${esc(s.source)} · paper</div></div></div>
-    <div class="lastpx ${dir}">${fmtPx(s.price_usd)}<span class="usd">$${fmtPx(s.price_usd)}</span></div>
-    <div class="pstat"><div class="k">24h Change</div><div class="v ${dir}">${s.change_24h_pct == null ? "—" : `${s.change_24h_pct >= 0 ? "+" : ""}${num(s.change_24h_pct)}%`}</div></div>
-    <div class="pstat"><div class="k">24h High</div><div class="v">${fmtPx(s.high_24h)}</div></div>
-    <div class="pstat"><div class="k">24h Low</div><div class="v">${fmtPx(s.low_24h)}</div></div>
-    <div class="pstat"><div class="k">24h Volume(${esc(curAsset)})</div><div class="v">${compact(s.volume_24h_base)}</div></div>
-    <div class="pstat"><div class="k">24h Volume(USD)</div><div class="v">${compact(s.volume_24h_usd)}</div></div>`;
+    <div class="lastpx" id="px-last">${fmtPx(s.price_usd)}<span class="usd">$${fmtPx(s.price_usd)}</span></div>
+    <div class="pstat"><div class="k">24h Change</div><div class="v" id="px-chg">—</div></div>
+    <div class="pstat"><div class="k">24h High</div><div class="v" id="px-high">${fmtPx(s.high_24h)}</div></div>
+    <div class="pstat"><div class="k">24h Low</div><div class="v" id="px-low">${fmtPx(s.low_24h)}</div></div>
+    <div class="pstat"><div class="k">24h Volume(${esc(curAsset)})</div><div class="v" id="px-vb">${compact(s.volume_24h_base)}</div></div>
+    <div class="pstat"><div class="k">24h Volume(USD)</div><div class="v" id="px-vq">${compact(s.volume_24h_usd)}</div></div>
+    <div class="pstat live-wrap"><span class="live-chip" id="live-chip">connecting stream…</span></div>`;
+  setChange(s.change_24h_pct, s.price_usd);
   document.title = `${fmtPx(s.price_usd)} | ${curAsset}/USD | Adaptive Quant`;
   drawCandles(m);
   setOhlc(last);
+  startStream();
 }
 
 function setOhlc(c) {
@@ -176,22 +276,27 @@ function drawCandles(m) {
   svg.onmouseleave = () => { $("xhair").innerHTML = ""; setOhlc(lc); };
 }
 
+function renderBook(ob) {
+  const rows = (lv, side) => {
+    let cum = 0; const out = lv.map(([p, q]) => { p = +p; q = +q; cum += p * q; return { p, q, cum }; });
+    const max = out.length ? out[out.length - 1].cum : 1;
+    const html = out.map((r) => `<div class="ob-row"><div class="bar" style="width:${(r.cum / max * 100).toFixed(1)}%"></div>
+      <span class="${side === "asks" ? "down" : "up"}">${fmtPx(r.p)}</span><span>${Number(r.q.toPrecision(5))}</span><span>${compact(r.p * r.q)}</span></div>`);
+    return side === "asks" ? html.reverse().join("") : html.join("");
+  };
+  const bids = ob.bids.slice(0, 14), asks = ob.asks.slice(0, 14);
+  const mid = bids.length && asks.length ? (+bids[0][0] + +asks[0][0]) / 2 : null;
+  $("ob-asks").className = "ob-side asks"; $("ob-bids").className = "ob-side bids";
+  $("ob-asks").innerHTML = rows(asks, "asks");
+  $("ob-bids").innerHTML = rows(bids, "bids");
+  $("ob-mid").innerHTML = mid == null ? "" : `${fmtPx(mid)} <small>mid · spread ${num((asks[0][0] - bids[0][0]) / mid * 1e4)} bps</small>`;
+  $("ob-src").textContent = `${ob.source} · ${new Date(ob.timestamp).toLocaleTimeString("en-GB")}`;
+}
+
 async function loadOrderBook() {
-  try {
-    const ob = await api(`/api/orderbook/${curAsset}?depth=14`);
-    const rows = (lv, side) => {
-      let cum = 0; const out = lv.map(([p, q]) => { cum += p * q; return { p, q, cum }; });
-      const max = out.length ? out[out.length - 1].cum : 1;
-      const html = out.map((r) => `<div class="ob-row"><div class="bar" style="width:${(r.cum / max * 100).toFixed(1)}%"></div>
-        <span class="${side === "asks" ? "down" : "up"}">${fmtPx(r.p)}</span><span>${Number(r.q.toPrecision(5))}</span><span>${compact(r.p * r.q)}</span></div>`);
-      return side === "asks" ? html.reverse().join("") : html.join("");
-    };
-    $("ob-asks").className = "ob-side asks"; $("ob-bids").className = "ob-side bids";
-    $("ob-asks").innerHTML = rows(ob.asks, "asks");
-    $("ob-bids").innerHTML = rows(ob.bids, "bids");
-    $("ob-mid").innerHTML = `${fmtPx(ob.mid)} <small>mid · spread ${num(ob.spread_bps)} bps</small>`;
-    $("ob-src").textContent = `${ob.source} · ${hm(ob.timestamp)}`;
-  } catch (e) {
+  if (Date.now() - LIVE.depthAt < 5000) return; // live depth stream is fresher than REST
+  try { renderBook(await api(`/api/orderbook/${curAsset}?depth=14`)); }
+  catch (e) {
     $("ob-asks").innerHTML = ""; $("ob-bids").innerHTML = "";
     $("ob-mid").innerHTML = `<small class="down">Order book unavailable</small>`;
     $("ob-src").textContent = "";
@@ -202,10 +307,11 @@ async function loadMarkets() {
   try {
     const p = await api("/api/prices");
     $("markets").innerHTML = p.assets.map((a) => `<div class="mk-row ${a.asset === curAsset ? "on" : ""}" onclick="location.hash='trade/${a.asset}'">
-      <span><b>${esc(a.asset)}</b><small>/USD</small></span><span>${a.available ? fmtPx(a.price_usd) : '<span class="muted">n/a</span>'}</span>
-      <span>${a.change_24h_pct == null ? NA : pct(a.change_24h_pct)}</span></div>`).join("")
+      <span><b>${esc(a.asset)}</b><small>/USD</small></span><span id="mk-px-${esc(a.asset)}">${a.available ? fmtPx(a.price_usd) : '<span class="muted">n/a</span>'}</span>
+      <span id="mk-chg-${esc(a.asset)}">${a.change_24h_pct == null ? NA : pct(a.change_24h_pct)}</span></div>`).join("")
       + Object.entries(p.removed || {}).map(([a, r]) => `<div class="mk-row" title="${esc(r)}"><span class="muted">${esc(a)}/USD</span><span class="muted">removed</span><span></span></div>`).join("")
       || empty("No markets — data unavailable");
+    startMarketsStream(p.assets.filter((a) => a.available && a.source === "binance").map((a) => a.asset));
   } catch (e) { $("markets").innerHTML = empty("Data unavailable"); }
 }
 
@@ -303,6 +409,11 @@ async function loadPortfolio() {
     : `<span class="chip ${v >= 0 ? "up" : "down"}">${v >= 0 ? "▲" : "▼"} ${Math.abs(v).toFixed(2)}% (24h)</span>`;
   $("pf-change").innerHTML = `${chip(pf.change_24h_pct)} ${pf.change_24h_gbp == null ? "" : signedGbp(pf.change_24h_gbp)}
     <span class="pf-muted">· ${signedGbp(pf.all_time_profit_gbp)} all-time on ${gbp(pf.starting_capital_gbp, 0)} invested</span>`;
+  const fx = pf.fx;
+  $("pf-fx").innerHTML = fx
+    ? `GBP/USD <b>${num(fx.usd_per_gbp, 4)}</b> · ${esc(fx.source)} · ${fx.realtime ? `<span class="up">live rate</span>, updated ${new Date(fx.timestamp).toLocaleTimeString("en-GB")} (refreshes every ${fx.refresh_seconds}s)` : `<span style="color:var(--warn)">daily reference rate, not real time</span> (${when(fx.timestamp)})`}`
+      + (pf.prices_as_of ? ` · prices as of ${new Date(pf.prices_as_of).toLocaleTimeString("en-GB")}` : "")
+    : `<span class="down">GBP/USD unavailable</span> — open positions are valued at their entry rate`;
 
   const b = pf.benchmarks, bh = b.btc_buy_and_hold, sm = b.sma_baseline;
   const item = (av, col, name, val, on) => `<div class="pf-item ${on ? "on" : ""}"><span class="av" style="background:${col}">${av}</span><div><div class="nm">${esc(name)}</div><div class="val">${val}</div></div></div>`;
@@ -602,5 +713,5 @@ setInterval(() => {
 setInterval(() => {
   const v = (location.hash.slice(1) || "trade").split("/")[0];
   if (v === "trade") { loadMarket(); loadBottom(); loadActivity(); }
-  if (v === "portfolio") loadPortfolio();
 }, 60000);
+setInterval(() => { if ((location.hash.slice(1) || "trade").split("/")[0] === "portfolio") loadPortfolio(); }, 15000);
