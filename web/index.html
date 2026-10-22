@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive Quant</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">AQ</div>
+    <div>
+      <h1>Adaptive Quant</h1>
+      <p class="sub">Evidence-driven market intelligence · Paper fund</p>
+    </div>
+  </div>
+  <div class="chips" id="status-chips"><span class="chip muted">Loading status…</span></div>
+</header>
+
+<div class="disclaimer" role="note">
+  <strong>Experimental paper performance — not live trading results.</strong>
+  No real money, no exchange keys, no live orders. Research Confidence is not a probability.
+</div>
+
+<nav class="tabs" id="tabs">
+  <a href="#overview" data-tab="overview">Overview</a>
+  <a href="#research" data-tab="research">Research</a>
+  <a href="#feed" data-tab="feed">Investigation feed</a>
+  <a href="#trades" data-tab="trades">Trades</a>
+  <a href="#lessons" data-tab="lessons">Lessons</a>
+  <a href="#system" data-tab="system">System</a>
+</nav>
+
+<main>
+  <section id="view-overview" class="view">
+    <div id="warnings"></div>
+    <div class="panel">
+      <div class="panel-head"><h2>Market prices</h2><span class="hint" id="prices-meta"></span></div>
+      <div id="prices" class="prices"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Adaptive Quant Paper Fund</h2><span class="hint" id="fund-meta"></span></div>
+      <div id="kpis" class="kpis"></div>
+      <div id="evidence-quality"></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>Benchmark comparison</h2><span class="hint">Same observation period</span></div>
+        <div id="benchmarks"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Risk engine limits</h2><span class="hint">Deterministic · LLM cannot override</span></div>
+        <div id="risk-config"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Open positions</h2></div>
+      <div id="open-positions"></div>
+    </div>
+  </section>
+
+  <section id="view-research" class="view">
+    <div class="panel">
+      <div class="panel-head"><h2>Run investigation</h2>
+        <span class="hint">Scout → Devil's Advocate → Risk Engine → Trade / No trade</span></div>
+      <div class="run-row">
+        <select id="asset-select" aria-label="Asset"></select>
+        <button id="run-btn" class="primary">Run investigation</button>
+        <span id="run-status" class="hint"></span>
+      </div>
+    </div>
+    <div id="investigation-result"></div>
+    <div class="panel">
+      <div class="panel-head"><h2>Recent investigations</h2></div>
+      <div id="investigation-list"></div>
+    </div>
+  </section>
+
+  <section id="view-feed" class="view">
+    <div class="panel">
+      <div class="panel-head"><h2>Live investigation feed</h2>
+        <span class="hint">Every item is a stored backend event · refreshes every 30s</span></div>
+      <div id="feed"></div>
+    </div>
+  </section>
+
+  <section id="view-trades" class="view">
+    <div class="panel">
+      <div class="panel-head"><h2>Paper trades</h2></div>
+      <div id="trades"></div>
+    </div>
+  </section>
+
+  <section id="view-trade" class="view"><div id="trade-detail"></div></section>
+  <section id="view-investigation" class="view"><div id="investigation-detail"></div></section>
+
+  <section id="view-lessons" class="view">
+    <div class="panel">
+      <div class="panel-head"><h2>Evidence accumulation</h2><span class="hint" id="lesson-policy"></span></div>
+      <div id="lesson-summary"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Lessons</h2></div>
+      <div id="lessons"></div>
+    </div>
+  </section>
+
+  <section id="view-system" class="view">
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>Data providers</h2></div>
+        <div id="providers"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Automated monitor</h2>
+          <button id="monitor-btn" class="secondary">Run scan now</button></div>
+        <div id="monitor-meta"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Monitor runs</h2><span class="hint">Cheap deterministic filters run first; agents only on triggers</span></div>
+      <div id="monitor-runs"></div>
+    </div>
+  </section>
+</main>
+<footer class="foot">Adaptive Quant MVP · paper trading only · see WHITEPAPER.md for methodology and limitations</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>
