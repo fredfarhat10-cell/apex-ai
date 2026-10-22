@@ -563,6 +563,116 @@ class Engine:
                 "note": ("Values are the last recorded equity of each UTC day (realised + marked-to-market open "
                          "positions, net of estimated costs). Days with no recording are left as gaps.")}
 
+    # -- trading terminal (Binance-style) ----------------------------------------
+    BARS = {"5m": 288, "1h": 168, "1d": 120}
+
+    def market_view(self, asset: str, interval: str = "1h") -> dict:
+        """Candles (closed bars + the still-forming bar, flagged), 24h stats and paper-trade markers."""
+        asset = asset.upper()
+        if interval not in self.BARS:
+            raise ValueError("interval must be one of " + ", ".join(self.BARS))
+        now = self.clock.now()
+        n = self.BARS[interval]
+        step = {"5m": timedelta(minutes=5), "1h": timedelta(hours=1), "1d": timedelta(days=1)}[interval]
+        end = now.replace(second=0, microsecond=0)
+        candles, src = self.market_data_candles(asset, interval, end - step * n, end)
+        out = [{"t": c.open_time.isoformat(), "o": c.open, "h": c.high, "l": c.low, "c": c.close, "v": c.volume,
+                "closed": c.is_closed(now)} for c in candles]
+        stats = {"asset": asset, "source": src}
+        try:
+            q = self.market.get_spot_price(asset)
+            stats.update(price_usd=q.price_usd, price_time=iso(q.timestamp))
+        except DataUnavailable:
+            stats["price_usd"] = out[-1]["c"] if out else None
+        try:
+            h1, _ = self.market_data_candles(asset, "1h", end - timedelta(hours=25), end)
+            day = [c for c in h1 if c.open_time >= now - timedelta(hours=24)]
+            if day:
+                stats.update(change_24h_pct=(stats["price_usd"] / day[0].open - 1) * 100 if stats["price_usd"] else None,
+                             high_24h=max(c.high for c in day), low_24h=min(c.low for c in day),
+                             volume_24h_base=sum(c.volume for c in day),
+                             volume_24h_usd=sum(c.volume * c.close for c in day))
+        except DataUnavailable:
+            pass
+        trades = self.db.all("SELECT t.id, t.direction, t.status, t.entry_time, t.entry_price_usd, t.stop_price_usd, "
+                             "t.target_price_usd, o.exit_time, o.exit_price_usd, o.exit_reason, o.net_pnl_gbp "
+                             "FROM paper_trades t LEFT JOIN trade_outcomes o ON o.trade_id = t.id WHERE t.asset = ? "
+                             "ORDER BY t.entry_time", (asset,))
+        return {"asset": asset, "interval": interval, "candles": out, "stats": stats, "trades": trades}
+
+    def market_data_candles(self, asset, interval, start, end):
+        return self.market.get_candles(asset, interval, start=start, end=end)
+
+    def order_book(self, asset: str, depth: int = 14) -> dict:
+        b = self.market.get_order_book(asset.upper())
+        bids, asks = b.bids[:depth], b.asks[:depth]
+        mid = (bids[0][0] + asks[0][0]) / 2 if bids and asks else None
+        return {"asset": b.asset, "source": b.source, "timestamp": iso(b.timestamp), "bids": bids, "asks": asks,
+                "mid": mid, "spread_bps": (asks[0][0] - bids[0][0]) / mid * 1e4 if mid else None}
+
+    # -- portfolio (CoinMarketCap-style) -----------------------------------------
+    def equity_series(self) -> dict:
+        fund = self.portfolio.ensure_fund()
+        fx = self._fx()
+        st = self.portfolio.state(self._open_position_prices(), fx.usd_per_gbp if fx else None)
+        pts = [(fund["created_at"], fund["starting_capital"])] + [
+            (x["taken_at"], x["equity_gbp"]) for x in self.db.all("SELECT taken_at, equity_gbp FROM equity_snapshots "
+                                                                    "ORDER BY taken_at")]
+        pts.append((iso(self.clock.now()), st["equity_gbp"]))
+        return {"starting_capital_gbp": fund["starting_capital"], "points": pts}
+
+    def portfolio_view(self) -> dict:
+        ov = self.overview()
+        st, fund = ov["state"], ov["fund"]
+        fx = (ov.get("fx") or {}).get("usd_per_gbp")
+        prices = {a["asset"]: a for a in self.prices()["assets"] if a.get("available")}
+        rows, invested = [], 0.0
+        for t in self.portfolio.open_trades():
+            p = prices.get(t["asset"], {})
+            px = p.get("price_usd")
+            sign = 1 if t["direction"] == "LONG" else -1
+            value = t["units"] * px / fx if px and fx else None
+            pnl = t["units"] * (px - t["entry_price_usd"]) * sign / fx if px and fx else None
+            cost = t["units"] * t["entry_price_usd"] / t["fx_entry_usd_per_gbp"]
+            invested += value if value is not None else cost
+            rows.append({"trade_id": t["id"], "asset": t["asset"], "direction": t["direction"], "price_usd": px,
+                         "change_24h_pct": p.get("change_24h_pct"), "units": t["units"], "value_gbp": value,
+                         "avg_buy_usd": t["entry_price_usd"], "cost_gbp": cost, "pnl_gbp": pnl,
+                         "pnl_pct": pnl / cost * 100 if pnl is not None and cost else None})
+        realized = {r["asset"]: r for r in self.db.all(
+            "SELECT t.asset, COUNT(*) AS trades, SUM(o.net_pnl_gbp) AS pnl FROM paper_trades t "
+            "JOIN trade_outcomes o ON o.trade_id = t.id GROUP BY t.asset")}
+        per_asset = {}
+        for a, r in realized.items():
+            per_asset[a] = r["pnl"]
+        for r in rows:
+            if r["pnl_gbp"] is not None:
+                per_asset[r["asset"]] = per_asset.get(r["asset"], 0.0) + r["pnl_gbp"]
+        best = max(per_asset.items(), key=lambda kv: kv[1]) if per_asset else None
+        worst = min(per_asset.items(), key=lambda kv: kv[1]) if per_asset else None
+        uninvested = st["equity_gbp"] - invested
+        alloc = [{"label": r["asset"] + (" (short)" if r["direction"] == "SHORT" else ""),
+                  "value_gbp": r["value_gbp"] if r["value_gbp"] is not None else r["cost_gbp"]} for r in rows]
+        alloc.append({"label": "Uninvested (GBP)", "value_gbp": max(uninvested, 0.0)})
+        snaps = self.db.all("SELECT taken_at, equity_gbp FROM equity_snapshots WHERE taken_at <= ? "
+                            "ORDER BY taken_at DESC LIMIT 1", (iso(self.clock.now() - timedelta(hours=24)),))
+        base24 = snaps[0]["equity_gbp"] if snaps else None
+        txs = self.db.all("SELECT t.id, t.asset, t.direction, t.entry_time, t.entry_price_usd, t.units, t.notional_gbp, "
+                          "t.status, o.exit_time, o.exit_price_usd, o.exit_reason, o.net_pnl_gbp FROM paper_trades t "
+                          "LEFT JOIN trade_outcomes o ON o.trade_id = t.id ORDER BY t.entry_time DESC LIMIT 50")
+        return {"disclaimer": ov["disclaimer"], "balance_gbp": st["equity_gbp"],
+                "starting_capital_gbp": fund["starting_capital"],
+                "change_24h_gbp": st["equity_gbp"] - base24 if base24 is not None else None,
+                "change_24h_pct": (st["equity_gbp"] / base24 - 1) * 100 if base24 else None,
+                "all_time_profit_gbp": st["equity_gbp"] - fund["starting_capital"],
+                "all_time_profit_pct": (st["equity_gbp"] / fund["starting_capital"] - 1) * 100,
+                "best_performer": {"asset": best[0], "pnl_gbp": best[1]} if best else None,
+                "worst_performer": {"asset": worst[0], "pnl_gbp": worst[1]} if worst else None,
+                "holdings": rows, "uninvested_gbp": uninvested, "allocation": alloc,
+                "realized_by_asset": list(realized.values()), "transactions": txs,
+                "evidence_quality": ov["trade_metrics"]["evidence_quality"], "benchmarks": ov["benchmarks"],
+                "warnings": ov["warnings"]}
+
     def get_trade(self, trade_id: str) -> dict | None:
         t = self.db.one("SELECT * FROM paper_trades WHERE id = ?", (trade_id,))
         if not t:

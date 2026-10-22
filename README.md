@@ -16,33 +16,44 @@ pip install -r requirements.txt
 cp .env.example .env            # optional: add ANTHROPIC_API_KEY to enable LLM agents
 python scripts/smoke_live.py    # checks the real data providers are reachable from your network
 python -m aq                    # dashboard + API at http://127.0.0.1:8000
-python -m pytest tests -q       # 56 tests, fully offline
+python -m pytest tests -q       # 58 tests, fully offline
 ```
 Requires Python ≥ 3.11 and outbound HTTPS to `api.exchange.coinbase.com`, `data-api.binance.vision` and
 `api.frankfurter.app` (plus `api.anthropic.com` when the LLM is enabled).
 
-## Dashboard ("Arena")
-The design follows the viral AI-trading-arena style: a dark terminal look, a scrolling live price ticker, and a big
-account value. A **return race chart** puts the AI fund against BTC buy-and-hold and an SMA trend bot from the same
-fixed start. An **investment trend** chart shows fund value in £ by day since inception (Day 1 £10,000 → Day N),
-with daily high/low and milestone cards. It is built only from recorded equity snapshots, and missing days are
-shown as gaps rather than filled in. Alongside these are a **leaderboard**, position cards with a stop↔target bar, **completed trades**, an
-**Agent Chat** (Scout / Devil's Advocate / Risk Engine / Learning messages) and a **system log**. Every message,
-line and number is a stored backend record. The ticker scrolls real quotes, and the monitor countdown is the real
-scheduler time.
+## Dashboard
+* **Trade** (Binance-style dark terminal) has:
+  * a pair header with 24h change, high, low and volume;
+  * a candlestick chart (5m / 1H / 1D) with volume, a crosshair and an OHLC readout;
+  * paper-trade overlays: BUY/SELL entry markers, exit dots, and ENTRY/STOP/TARGET lines for open positions;
+  * the live L2 order book;
+  * a markets list with 24h change and an agent-activity feed for the pair;
+  * the **AI Investigation** panel, where Binance has its buy/sell box, with a "Run Investigation" button and the
+    latest Scout / Devil's Advocate / Risk Engine result;
+  * Open Positions / Trade History / Investigations / System Log tabs.
+* **Portfolio** (CoinMarketCap-style light) has:
+  * the current balance with a 24h change chip and all-time profit;
+  * best/worst performer and evidence-quality cards;
+  * a **History** chart with 24h / 7d / 30d / 90d / All ranges and an **Allocation** donut;
+  * the **Investment trend** by day (Day 1 £10,000 → Day N);
+  * **Your Assets** (price, 24h %, holdings, average buy price, P/L), **Transactions**, and a comparison against
+    BTC buy-and-hold and an SMA trend bot from the same fixed start.
+
+Everything is rendered from stored records or live provider data. When data is missing the UI says so; the 24h
+change, for example, shows "not enough history" for a fund younger than a day.
 
 ## Acceptance demo (the 12 steps)
 | Step | Where |
 |---|---|
 | 1. Open the app | `python -m aq` → http://127.0.0.1:8000 |
-| 2. Real prices | Ticker tape + positions (source and timestamps on each investigation) |
-| 3. Run investigation | Arena → pick an asset chip → **▶ RUN** |
+| 2. Real prices | Trade page: pair header, candles, order book, markets list |
+| 3. Run investigation | Trade → pick a market → **Run Investigation** |
 | 4–6. Scout → Devil's Advocate → Risk Engine | Rendered as a five-step chain with every check |
 | 7. TRADE / NO TRADE | Decision step + feed event |
-| 8. Simulated position | Arena → *Positions* cards |
+| 8. Simulated position | Trade → *Open Positions*; chart shows ENTRY/STOP/TARGET; Portfolio → *Your Assets* |
 | 9. Close on real data | Automatic: the monitor checks stop, target and horizon on real 5m candles. Manual: trade page → *Close at current market price* |
 | 10–11. Post-trade review + lesson | Trade page → *What did we learn?*; Lessons tab |
-| 12. Dashboard updates | Account value, race chart, leaderboard, agent chat |
+| 12. Dashboard updates | Portfolio balance, history, investment trend, transactions, benchmarks |
 
 The automated monitor (every 15 min) runs cheap deterministic filters first. It calls the agents only for
 assets that trip a trigger, and applies a per-asset cooldown.

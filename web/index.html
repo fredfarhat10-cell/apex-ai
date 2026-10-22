@@ -3,112 +3,172 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Adaptive Quant — Arena</title>
+<title>Adaptive Quant</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
-<div class="ticker" aria-label="Live prices"><div class="ticker-track" id="ticker"><span class="tick muted">connecting to market data…</span></div></div>
-
-<header class="top">
-  <a class="brand" href="#arena">
-    <span class="logo">AQ</span>
-    <span class="brand-name">ADAPTIVE<b>QUANT</b></span>
-    <span class="pill paper">PAPER</span>
+<body class="theme-bn">
+<header class="nav">
+  <a class="brand" href="#trade">
+    <span class="logo"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2l3 3-3 3-3-3zM5 9l3 3-3 3-3-3zm14 0l3 3-3 3-3-3zM12 16l3 3-3 3-3-3zm0-7l3 3-3 3-3-3z"/></svg></span>
+    <span class="brand-name">ADAPTIVE QUANT</span>
   </a>
-  <nav class="tabs" id="tabs">
-    <a href="#arena" data-tab="arena">ARENA</a>
-    <a href="#research" data-tab="research">RESEARCH</a>
-    <a href="#lessons" data-tab="lessons">LESSONS</a>
-    <a href="#system" data-tab="system">SYSTEM</a>
+  <nav class="links" id="links">
+    <a href="#trade" data-tab="trade">Trade</a>
+    <a href="#portfolio" data-tab="portfolio">Portfolio</a>
+    <a href="#research" data-tab="research">Research</a>
+    <a href="#lessons" data-tab="lessons">Lessons</a>
+    <a href="#system" data-tab="system">System</a>
   </nav>
-  <div class="status" id="status-line"><span class="dot"></span><span>connecting…</span></div>
+  <div class="nav-right">
+    <span class="status" id="status-line"><span class="dot"></span>connecting…</span>
+    <span class="paper-badge" title="No real money, no exchange keys, no live orders">PAPER TRADING</span>
+  </div>
 </header>
-<div class="disclaimer">EXPERIMENTAL PAPER PERFORMANCE — NOT LIVE TRADING RESULTS · £10,000 SIMULATED · NO REAL ORDERS</div>
+<div class="disclaimer">Experimental paper performance — not live trading results. £10,000 simulated fund · no real orders · Research Confidence is not a probability.</div>
 
 <main>
-  <!-- ARENA -->
-  <section id="view-arena" class="view">
-    <div class="arena">
-      <div class="col-main">
-        <div class="card hero">
-          <div class="hero-top">
-            <div>
-              <div class="label">TOTAL ACCOUNT VALUE</div>
-              <div class="big" id="acct-value">—</div>
-              <div class="sub" id="acct-sub"></div>
-            </div>
-            <div class="run-box">
-              <div class="label">RUN INVESTIGATION</div>
-              <div class="asset-chips" id="asset-chips"></div>
-              <button id="run-btn" class="run">▶ RUN</button>
+  <!-- ===================== TRADE (Binance-style) ===================== -->
+  <section id="view-trade" class="view">
+    <div class="pairbar" id="pairbar"></div>
+    <div class="terminal">
+      <div class="panel ob">
+        <div class="panel-title"><span>Order Book</span><span class="muted" id="ob-src"></span></div>
+        <div class="ob-head"><span>Price (USD)</span><span>Amount</span><span>Total (USD)</span></div>
+        <div id="ob-asks" class="ob-side"></div>
+        <div id="ob-mid" class="ob-mid"></div>
+        <div id="ob-bids" class="ob-side"></div>
+      </div>
+
+      <div class="center">
+        <div class="panel chart-panel">
+          <div class="chart-tools">
+            <span class="muted">Time</span>
+            <button data-iv="5m">5m</button><button data-iv="1h" class="on">1H</button><button data-iv="1d">1D</button>
+            <span class="ohlc" id="ohlc"></span>
+          </div>
+          <div id="candles" class="candles"></div>
+        </div>
+        <div class="panel invest">
+          <div class="invest-tabs"><span class="on">AI Investigation</span><span class="muted">Scout → Devil's Advocate → Risk Engine</span></div>
+          <div class="invest-grid">
+            <div class="invest-form">
+              <div class="row"><span class="muted">Market</span><b id="inv-asset">—</b></div>
+              <div class="row"><span class="muted">Risk per trade</span><b id="inv-risk">—</b></div>
+              <div class="row"><span class="muted">Min reward/risk</span><b id="inv-rr">—</b></div>
+              <div class="row"><span class="muted">Agents</span><b id="inv-engine">—</b></div>
+              <button id="run-btn" class="btn-yellow">Run Investigation</button>
               <div class="run-status" id="run-status"></div>
             </div>
+            <div class="invest-result" id="inv-result"></div>
           </div>
-          <div class="chart-wrap" id="race-chart"></div>
-          <div class="legend" id="race-legend"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head"><span>INVESTMENT TREND · FUND VALUE BY DAY</span><span class="muted small" id="trend-meta"></span></div>
-          <div class="chart-wrap" id="trend-chart"></div>
-          <div class="milestones" id="trend-milestones"></div>
-          <div class="muted small" id="trend-note" style="margin-top:8px"></div>
-        </div>
-
-        <div class="stats" id="stats"></div>
-
-        <div class="card">
-          <div class="subtabs" id="subtabs">
-            <button data-sub="positions" class="on">POSITIONS</button>
-            <button data-sub="completed">COMPLETED TRADES</button>
-            <button data-sub="leaderboard">LEADERBOARD</button>
-          </div>
-          <div id="sub-positions" class="sub-view on"></div>
-          <div id="sub-completed" class="sub-view"></div>
-          <div id="sub-leaderboard" class="sub-view"></div>
         </div>
       </div>
 
-      <aside class="col-side">
-        <div class="card agents" id="agents"></div>
-        <div class="card chat">
-          <div class="card-head"><span>AGENT CHAT</span><span class="muted small">every message = stored event</span></div>
-          <div id="chat" class="chat-body"></div>
+      <div class="side">
+        <div class="panel markets">
+          <div class="panel-title"><span>Markets</span><span class="muted">USD</span></div>
+          <div class="mk-head"><span>Pair</span><span>Price</span><span>24h Change</span></div>
+          <div id="markets"></div>
         </div>
+        <div class="panel activity">
+          <div class="panel-title"><span>Agent Activity</span><span class="muted" id="act-asset"></span></div>
+          <div id="activity" class="act-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel bottom">
+      <div class="btabs" id="btabs">
+        <button data-b="positions" class="on">Open Positions <span id="cnt-open"></span></button>
+        <button data-b="history">Trade History</button>
+        <button data-b="investigations">Investigations</button>
+        <button data-b="log">System Log</button>
+      </div>
+      <div id="b-positions" class="bview on"></div>
+      <div id="b-history" class="bview"></div>
+      <div id="b-investigations" class="bview"></div>
+      <div id="b-log" class="bview"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PORTFOLIO (CoinMarketCap-style) ===================== -->
+  <section id="view-portfolio" class="view">
+    <div class="pf">
+      <aside class="pf-side">
+        <div class="pf-side-title">Portfolios</div>
+        <div id="pf-list"></div>
+        <div class="pf-side-note">Benchmarks are tracked from the same fixed start so the AI fund is always compared against something.</div>
       </aside>
+      <div class="pf-main">
+        <div class="pf-head">
+          <div>
+            <div class="pf-owner"><span class="pf-avatar">AQ</span> Adaptive Quant Paper Fund</div>
+            <div class="pf-label">Current Balance</div>
+            <div class="pf-balance" id="pf-balance">—</div>
+            <div class="pf-change" id="pf-change"></div>
+          </div>
+          <div class="pf-actions"><a class="btn-blue" href="#trade">+ Run investigation</a></div>
+        </div>
+
+        <div class="pf-cards" id="pf-cards"></div>
+
+        <div class="pf-grid">
+          <div class="pf-card">
+            <div class="pf-card-head"><h3>History</h3>
+              <div class="seg" id="range"><button data-r="1">24h</button><button data-r="7">7d</button><button data-r="30" class="on">30d</button><button data-r="90">90d</button><button data-r="0">All</button></div></div>
+            <div id="pf-history" class="pf-chart"></div>
+          </div>
+          <div class="pf-card">
+            <div class="pf-card-head"><h3>Allocation</h3></div>
+            <div id="pf-alloc"></div>
+          </div>
+        </div>
+
+        <div class="pf-card">
+          <div class="pf-card-head"><h3>Investment trend</h3><span class="pf-muted" id="trend-meta"></span></div>
+          <div class="pf-days" id="pf-days"></div>
+          <div class="pf-muted small" id="trend-note"></div>
+        </div>
+
+        <div class="pf-card">
+          <div class="pf-card-head"><h3>Your Assets</h3><span class="pf-muted">Open paper positions, marked to market</span></div>
+          <div id="pf-assets"></div>
+        </div>
+
+        <div class="pf-grid">
+          <div class="pf-card">
+            <div class="pf-card-head"><h3>Transactions</h3></div>
+            <div id="pf-tx"></div>
+          </div>
+          <div class="pf-card">
+            <div class="pf-card-head"><h3>Versus benchmarks</h3></div>
+            <div id="pf-bench"></div>
+          </div>
+        </div>
+      </div>
     </div>
-
-    <div class="card terminal">
-      <div class="card-head"><span>&gt;_ SYSTEM LOG</span><span class="muted small" id="term-meta"></span></div>
-      <div id="terminal" class="term-body"></div>
-    </div>
   </section>
 
-  <!-- RESEARCH / DETAIL VIEWS -->
-  <section id="view-research" class="view">
-    <div class="card"><div class="card-head"><span>INVESTIGATIONS</span><span class="muted small">Scout → Devil's Advocate → Risk Engine → Decision</span></div>
-      <div id="investigation-result"></div><div id="investigation-list"></div></div>
-  </section>
-  <section id="view-investigation" class="view"><div id="investigation-detail"></div></section>
-  <section id="view-trade" class="view"><div id="trade-detail"></div></section>
-
-  <section id="view-lessons" class="view">
-    <div class="card"><div class="card-head"><span>EVIDENCE ACCUMULATION</span><span class="muted small" id="lesson-policy"></span></div><div id="lesson-summary"></div></div>
-    <div class="card"><div class="card-head"><span>LESSONS</span></div><div id="lessons"></div></div>
-  </section>
-
-  <section id="view-system" class="view">
+  <!-- ===================== OTHER VIEWS (dark) ===================== -->
+  <section id="view-research" class="view"><div class="wrap">
+    <div class="card"><div class="card-head"><span>Investigations</span><span class="muted">Scout → Devil's Advocate → Risk Engine → Decision</span></div>
+      <div id="investigation-list"></div></div></div></section>
+  <section id="view-investigation" class="view"><div class="wrap" id="investigation-detail"></div></section>
+  <section id="view-position" class="view"><div class="wrap" id="trade-detail"></div></section>
+  <section id="view-lessons" class="view"><div class="wrap">
+    <div class="card"><div class="card-head"><span>Evidence accumulation</span><span class="muted" id="lesson-policy"></span></div><div id="lesson-summary"></div></div>
+    <div class="card"><div class="card-head"><span>Lessons</span></div><div id="lessons"></div></div></div></section>
+  <section id="view-system" class="view"><div class="wrap">
     <div class="grid2">
-      <div class="card"><div class="card-head"><span>DATA PROVIDERS</span></div><div id="providers"></div></div>
-      <div class="card"><div class="card-head"><span>AUTOMATED MONITOR</span><button id="monitor-btn" class="ghost">RUN SCAN NOW</button></div><div id="monitor-meta"></div></div>
+      <div class="card"><div class="card-head"><span>Data providers</span></div><div id="providers"></div></div>
+      <div class="card"><div class="card-head"><span>Automated monitor</span><button id="monitor-btn" class="btn-ghost">Run scan now</button></div><div id="monitor-meta"></div></div>
     </div>
-    <div class="card"><div class="card-head"><span>RISK ENGINE LIMITS</span><span class="muted small">deterministic · LLM cannot override</span></div><div id="risk-config"></div></div>
-    <div class="card"><div class="card-head"><span>MONITOR RUNS</span></div><div id="monitor-runs"></div></div>
-  </section>
+    <div class="card"><div class="card-head"><span>Risk engine limits</span><span class="muted">deterministic · LLM cannot override</span></div><div id="risk-config"></div></div>
+    <div class="card"><div class="card-head"><span>Monitor runs</span></div><div id="monitor-runs"></div></div></div></section>
 </main>
-<footer class="foot">ADAPTIVE QUANT · paper trading research · see WHITEPAPER.md · past performance does not establish future performance</footer>
+<footer class="foot">Adaptive Quant · paper trading research · see WHITEPAPER.md · past performance does not establish future performance</footer>
 <script src="/static/app.js"></script>
 </body>
 </html>

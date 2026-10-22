@@ -95,6 +95,25 @@ def create_app(engine: Engine | None = None, start_scheduler: bool | None = None
     def arena():
         return engine.arena()
 
+    @app.get("/api/market/{asset}")
+    def market(asset: str, interval: str = "1h"):
+        try:
+            return engine.market_view(asset, interval)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/orderbook/{asset}")
+    def orderbook(asset: str, depth: int = 14):
+        return engine.order_book(asset, min(depth, 50))
+
+    @app.get("/api/portfolio")
+    def portfolio():
+        return engine.portfolio_view()
+
+    @app.get("/api/equity-series")
+    def equity_series():
+        return engine.equity_series()
+
     @app.get("/api/investment-trend")
     def investment_trend():
         return engine.investment_trend()

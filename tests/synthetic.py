@@ -10,7 +10,7 @@ import math
 import random
 from datetime import datetime, timedelta, timezone
 
-from aq.data.base import INTERVAL_SECONDS, Candle, DataUnavailable, FxQuote, MarketDataProvider, PriceQuote
+from aq.data.base import INTERVAL_SECONDS, Candle, DataUnavailable, FxQuote, MarketDataProvider, OrderBook, PriceQuote
 
 ANCHOR = datetime(2026, 1, 10, 12, 0, tzinfo=timezone.utc)
 
@@ -88,3 +88,12 @@ class SyntheticProvider(MarketDataProvider):
         if self.fail:
             raise DataUnavailable("synthetic outage")
         return FxQuote(self.fx, self.clock.now(), self.name)
+
+    def get_order_book(self, asset):
+        """TEST-ONLY deterministic ladder around the synthetic price (2 bps spread, growing depth)."""
+        if self.fail:
+            raise DataUnavailable("synthetic outage")
+        p = self.paths[asset].price_at(self.clock.now())
+        bids = [(p * (1 - 0.0001 - i * 0.0002), 0.5 * (i + 1) * 3000 / p) for i in range(30)]
+        asks = [(p * (1 + 0.0001 + i * 0.0002), 0.5 * (i + 1) * 3000 / p) for i in range(30)]
+        return OrderBook(asset, bids, asks, self.clock.now(), self.name)

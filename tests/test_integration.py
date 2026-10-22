@@ -182,3 +182,29 @@ def test_investment_trend_reports_gaps(make_engine):
     tr = eng.investment_trend()
     assert tr["missing_days"] == [2, 3, 4]
     assert [p["day"] for p in tr["points"]] == [1, 5]
+
+
+def test_trading_terminal_endpoints(make_engine):
+    eng, clock, _ = make_engine(after_drift=0.0)
+    inv = eng.run_investigation("ETH")
+    assert inv["trade"]["costs_json"]["slippage_source"].startswith("synthetic-test L2 book walk")
+    clock.advance(minutes=30)
+    m = eng.market_view("ETH", "5m")
+    assert m["candles"] and m["candles"][-1]["closed"] is False  # forming bar is flagged, not hidden
+    assert all(c["closed"] for c in m["candles"][:-1])
+    assert m["stats"]["high_24h"] >= m["stats"]["low_24h"] and m["stats"]["change_24h_pct"] is not None
+    assert m["trades"][0]["status"] == "OPEN"
+    ob = eng.order_book("ETH", 5)
+    assert len(ob["bids"]) == 5 and ob["bids"][0][0] < ob["asks"][0][0] and ob["spread_bps"] > 0
+
+
+def test_portfolio_view(make_engine):
+    eng, clock, _ = make_engine(after_drift=0.0)
+    eng.run_investigation("ETH")
+    clock.advance(hours=1)
+    pv = eng.portfolio_view()
+    assert len(pv["holdings"]) == 1 and pv["holdings"][0]["asset"] == "ETH"
+    total = sum(a["value_gbp"] for a in pv["allocation"])
+    assert abs(total - pv["balance_gbp"]) < 1.0  # positions + uninvested = balance (within cost rounding)
+    assert pv["transactions"][0]["status"] == "OPEN"
+    assert pv["change_24h_gbp"] is None  # fund younger than 24h: no fake 24h change
