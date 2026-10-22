@@ -50,7 +50,8 @@ main { padding: 16px 20px 30px; max-width: 1600px; margin: 0 auto; }
 
 /* arena layout */
 .arena { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 14px; }
-@media (max-width: 1100px) { .arena { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .arena { grid-template-columns: minmax(0, 1fr); } }
+.col-main, .col-side { min-width: 0; }
 @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid2 { grid-template-columns: 1fr; } main, .top { padding-left: 12px; padding-right: 12px; } }
 .hero-top { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
 .big { font-size: 42px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -158,3 +159,11 @@ ul.tight { margin: 4px 0; padding-left: 18px; } ul.tight li { margin: 3px 0; }
 details summary { cursor: pointer; color: var(--cyan); font-size: 12px; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .foot { text-align: center; color: var(--dim); font-size: 10px; letter-spacing: .1em; padding: 20px; }
+
+/* investment trend */
+.milestones { display: flex; gap: 0; overflow-x: auto; margin-top: 10px; border: 1px solid var(--line); }
+.mile { padding: 8px 14px; border-right: 1px solid var(--line); white-space: nowrap; flex: 0 0 auto; }
+.mile:last-child { border-right: 0; }
+.mile .d { font-size: 10px; letter-spacing: .12em; color: var(--muted); }
+.mile .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mile .c { font-size: 11px; }

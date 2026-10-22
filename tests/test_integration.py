@@ -152,3 +152,33 @@ def test_arena_read_model(make_engine):
     assert {r["id"] for r in a["leaderboard"]} == {"ai", "hodl", "sma"}
     returns = [r["return_pct"] for r in a["leaderboard"] if r["return_pct"] is not None]
     assert returns == sorted(returns, reverse=True)
+
+
+def test_investment_trend_by_day(make_engine):
+    eng, clock, _ = make_engine(after_drift=0.006)
+    eng.monitor_cycle()
+    eng.run_investigation("ETH")
+    for _ in range(3):  # three days of hourly scans
+        for _ in range(24):
+            clock.advance(hours=1)
+            eng.monitor_cycle()
+    tr = eng.investment_trend()
+    pts = tr["points"]
+    assert pts[0]["day"] == 1 and pts[0]["snapshots"] >= 1
+    assert [p["day"] for p in pts] == list(range(1, pts[-1]["day"] + 1))
+    assert tr["missing_days"] == []
+    final = eng.overview()["state"]["equity_gbp"]
+    assert abs(pts[-1]["value_gbp"] - final) < 1e-6  # last point is the live fund value
+    for p in pts:
+        assert p["low_gbp"] <= p["value_gbp"] <= p["high_gbp"]
+        assert abs(p["change_from_start_gbp"] - (p["value_gbp"] - 10_000)) < 1e-9
+
+
+def test_investment_trend_reports_gaps(make_engine):
+    eng, clock, _ = make_engine()
+    eng.monitor_cycle()
+    clock.advance(days=4)  # nothing recorded on days 2-4
+    eng.monitor_cycle()
+    tr = eng.investment_trend()
+    assert tr["missing_days"] == [2, 3, 4]
+    assert [p["day"] for p in tr["points"]] == [1, 5]

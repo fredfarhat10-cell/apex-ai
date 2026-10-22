@@ -530,6 +530,39 @@ class Engine:
         board.sort(key=lambda r: (r["return_pct"] is None, -(r["return_pct"] or 0)))
         return {"overview": ov, "series": series, "leaderboard": board}
 
+    def investment_trend(self) -> dict:
+        """Fund value per day since inception, from recorded equity snapshots only (no interpolation).
+        Day 1 = the fund's creation date (UTC). Each day's value is its last snapshot; high/low are the
+        extremes recorded that day. Days without any snapshot are reported as gaps, not filled in."""
+        fund = self.portfolio.ensure_fund()
+        start_cap = fund["starting_capital"]
+        created = parse_iso(fund["created_at"])
+        fx = self._fx()
+        st = self.portfolio.state(self._open_position_prices(), fx.usd_per_gbp if fx else None)
+        rows = [(parse_iso(x["taken_at"]), x["equity_gbp"])
+                for x in self.db.all("SELECT taken_at, equity_gbp FROM equity_snapshots ORDER BY taken_at")]
+        rows = [(created, start_cap)] + rows + [(self.clock.now(), st["equity_gbp"])]
+        days: dict[int, dict] = {}
+        for t, e in rows:
+            n = (t.date() - created.date()).days + 1
+            d = days.setdefault(n, {"day": n, "date": t.date().isoformat(), "high_gbp": e, "low_gbp": e,
+                                    "snapshots": 0})
+            d["value_gbp"] = e
+            d["high_gbp"], d["low_gbp"] = max(d["high_gbp"], e), min(d["low_gbp"], e)
+            d["snapshots"] += 1
+        points = []
+        for n in sorted(days):
+            d = days[n]
+            d["change_from_start_gbp"] = d["value_gbp"] - start_cap
+            d["return_pct"] = (d["value_gbp"] / start_cap - 1) * 100
+            points.append(d)
+        last = points[-1]["day"]
+        missing = [n for n in range(1, last + 1) if n not in days]
+        return {"starting_capital_gbp": start_cap, "inception": fund["created_at"], "points": points,
+                "days_elapsed": last, "missing_days": missing,
+                "note": ("Values are the last recorded equity of each UTC day (realised + marked-to-market open "
+                         "positions, net of estimated costs). Days with no recording are left as gaps.")}
+
     def get_trade(self, trade_id: str) -> dict | None:
         t = self.db.one("SELECT * FROM paper_trades WHERE id = ?", (trade_id,))
         if not t:

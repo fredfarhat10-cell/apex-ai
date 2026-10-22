@@ -117,11 +117,92 @@ $("run-btn").addEventListener("click", async () => {
 // ---- arena ---------------------------------------------------------------------
 const SERIES_COLOR = { ai: "--c-ai", hodl: "--c-hodl", sma: "--c-sma" };
 const SERIES_TAG = { ai: "AI", hodl: "HODL", sma: "SMA" };
-let LAST_SERIES = null, resizeTimer = null;
+let LAST_SERIES = null, LAST_TREND = null, resizeTimer = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (LAST_SERIES) $("race-chart").innerHTML = raceChart(LAST_SERIES); }, 150);
+  resizeTimer = setTimeout(() => {
+    if (LAST_SERIES) $("race-chart").innerHTML = raceChart(LAST_SERIES);
+    if (LAST_TREND) $("trend-chart").innerHTML = trendChart(LAST_TREND);
+  }, 150);
 });
+
+// Fund value (£) per day. Points come straight from recorded equity; days with no recording break the line.
+function trendChart(tr) {
+  const pts = tr.points;
+  if (pts.length < 2) return empty(`Day 1 of the fund: ${gbp(tr.starting_capital_gbp, 0).replace(/<[^>]+>/g, "")} invested. The trend line appears once a second day has been recorded.`);
+  const W = Math.max(320, $("trend-chart").clientWidth || 1000), H = W < 600 ? 240 : 280;
+  const L = W < 600 ? 62 : 76, R = 24, T = 26, B = 30;
+  const maxDay = pts[pts.length - 1].day;
+  const vals = pts.flatMap((p) => [p.value_gbp, p.high_gbp, p.low_gbp]).concat([tr.starting_capital_gbp]);
+  let y0 = Math.min(...vals), y1 = Math.max(...vals);
+  const pad = Math.max((y1 - y0) * 0.15, tr.starting_capital_gbp * 0.002); y0 -= pad; y1 += pad;
+  const X = (d) => L + (maxDay === 1 ? 0.5 : (d - 1) / (maxDay - 1)) * (W - L - R);
+  const Y = (v) => T + (y1 - v) / (y1 - y0) * (H - T - B);
+  const line = css("--line"), dim = css("--dim"), muted = css("--muted"), green = css("--green"), red = css("--red");
+  const fmt = (v) => "£" + Math.round(v).toLocaleString("en-GB");
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + (y1 - y0) * i / 4;
+    g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="${dim}">${fmt(v)}</text>`;
+  }
+  const step = Math.max(1, Math.ceil(maxDay / (W < 600 ? 5 : 10)));
+  for (let d = 1; d <= maxDay; d += step) g += `<text x="${X(d)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="${dim}">DAY ${d}</text>`;
+  g += `<line x1="${L}" x2="${W - R}" y1="${Y(tr.starting_capital_gbp)}" y2="${Y(tr.starting_capital_gbp)}" stroke="${muted}" stroke-dasharray="4 4"/>
+    <text x="${W - R}" y="${Y(tr.starting_capital_gbp) - 6}" text-anchor="end" font-size="10" fill="${muted}">invested ${fmt(tr.starting_capital_gbp)}</text>`;
+  // Split into contiguous runs so missing days show as gaps.
+  const runs = [];
+  for (const p of pts) { const r = runs[runs.length - 1]; if (r && p.day === r[r.length - 1].day + 1) r.push(p); else runs.push([p]); }
+  const lines = runs.map((r) => {
+    const d = r.map((p, i) => `${i ? "L" : "M"}${X(p.day).toFixed(1)},${Y(p.value_gbp).toFixed(1)}`).join("");
+    const area = `${d}L${X(r[r.length - 1].day).toFixed(1)},${Y(tr.starting_capital_gbp).toFixed(1)}L${X(r[0].day).toFixed(1)},${Y(tr.starting_capital_gbp).toFixed(1)}Z`;
+    return `<path d="${area}" fill="${green}" fill-opacity=".07"/><path d="${d}" fill="none" stroke="${green}" stroke-width="2.4" stroke-linejoin="round" filter="url(#glow2)"/>`;
+  }).join("");
+  const showAll = pts.length <= (W < 600 ? 6 : 14);
+  const hi = pts.reduce((a, b) => (b.value_gbp > a.value_gbp ? b : a)), lo = pts.reduce((a, b) => (b.value_gbp < a.value_gbp ? b : a));
+  // Label first, last, best, worst (or all when few), skipping any that would collide with a neighbour's label.
+  const want = pts.map((p, i) => showAll || i === 0 || i === pts.length - 1 || p === hi || p === lo);
+  const placed = [];
+  for (const i of [pts.length - 1, ...pts.keys()]) {
+    if (!want[i] || placed.includes(i)) continue;
+    const x = X(pts[i].day), y = Y(pts[i].value_gbp);
+    if (placed.some((j) => Math.abs(X(pts[j].day) - x) < 64 && Math.abs(Y(pts[j].value_gbp) - y) < 16)) want[i] = false;
+    else placed.push(i);
+  }
+  const marks = pts.map((p, i) => {
+    const col = p.value_gbp >= tr.starting_capital_gbp ? green : red;
+    const label = want[i];
+    const range = p.high_gbp > p.low_gbp ? `<line x1="${X(p.day)}" x2="${X(p.day)}" y1="${Y(p.high_gbp)}" y2="${Y(p.low_gbp)}" stroke="${col}" stroke-opacity=".45" stroke-width="3"/>` : "";
+    return `${range}<circle cx="${X(p.day)}" cy="${Y(p.value_gbp)}" r="4" fill="${col}"/>${label
+      ? `<text x="${X(p.day)}" y="${Y(p.value_gbp) - 10}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${fmt(p.value_gbp)}</text>` : ""}`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="height:${H}px" role="img" aria-label="Fund value by day since inception">
+    <defs><filter id="glow2"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    ${g}${lines}${marks}</svg>`;
+}
+
+async function loadTrend() {
+  let tr;
+  try { tr = await api("/api/investment-trend"); } catch (e) { $("trend-chart").innerHTML = empty("Data unavailable: " + e.message); return; }
+  LAST_TREND = tr;
+  $("trend-chart").innerHTML = trendChart(tr);
+  const last = tr.points[tr.points.length - 1];
+  $("trend-meta").innerHTML = `day ${tr.days_elapsed} · ${gbp(tr.starting_capital_gbp, 0)} invested → ${gbp(last.value_gbp)} ${pct(last.return_pct)}`;
+  // Milestones: every recorded day if few, otherwise a spaced selection that always includes first, last, best and worst.
+  let ms = tr.points;
+  if (ms.length > 12) {
+    const keep = new Set([0, ms.length - 1]);
+    const hiI = ms.reduce((a, p, i) => (p.value_gbp > ms[a].value_gbp ? i : a), 0), loI = ms.reduce((a, p, i) => (p.value_gbp < ms[a].value_gbp ? i : a), 0);
+    keep.add(hiI); keep.add(loI);
+    const step = Math.ceil(ms.length / 8);
+    for (let i = 0; i < ms.length; i += step) keep.add(i);
+    ms = [...keep].sort((a, b) => a - b).map((i) => tr.points[i]);
+  }
+  $("trend-milestones").innerHTML = ms.map((p) => `<div class="mile"><div class="d">DAY ${p.day} · ${esc(p.date)}</div>
+    <div class="v ${p.value_gbp > tr.starting_capital_gbp ? "pos" : p.value_gbp < tr.starting_capital_gbp ? "neg" : ""}">${gbp(p.value_gbp)}</div>
+    <div class="c">${signedGbp(p.change_from_start_gbp)} ${pct(p.return_pct)}</div></div>`).join("");
+  $("trend-note").textContent = tr.note + (tr.missing_days.length ? ` Days with no recording: ${tr.missing_days.join(", ")}.` : "")
+    + " Paper performance only — not evidence of future results.";
+}
 
 function raceChart(series) {
   // viewBox matches the container's pixel size so text never stretches.
@@ -181,6 +262,7 @@ async function loadArena() {
   $("acct-sub").innerHTML = `${signedGbp(pnl)} ${pct(em.total_return_pct)} <span class="muted">all-time · today ${pct(em.today_return_pct)} · realised ${gbp(st.realized_gbp)} · unrealised ${gbp(st.unrealized_gbp)}</span>`;
   LAST_SERIES = a.series;
   $("race-chart").innerHTML = raceChart(a.series);
+  loadTrend();
   $("race-legend").innerHTML = a.series.map((s) => `<span><i style="background:${css(SERIES_COLOR[s.id])}"></i>${esc(s.name)} <span class="muted">(${esc(s.unit)})</span></span>`).join("") +
     (o.benchmarks.period_start ? `<span class="muted">from ${when(o.benchmarks.period_start)} — fixed start, no date picking</span>` : "");
   const n = small ? (eq.level === "none" ? "no trades yet" : `n=${tm.number_of_trades} · not significant`) : "";

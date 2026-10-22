@@ -95,6 +95,10 @@ def create_app(engine: Engine | None = None, start_scheduler: bool | None = None
     def arena():
         return engine.arena()
 
+    @app.get("/api/investment-trend")
+    def investment_trend():
+        return engine.investment_trend()
+
     @app.get("/api/feed")
     def feed(limit: int = 50, before_id: int | None = None):
         if before_id:

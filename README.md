@@ -16,7 +16,7 @@ pip install -r requirements.txt
 cp .env.example .env            # optional: add ANTHROPIC_API_KEY to enable LLM agents
 python scripts/smoke_live.py    # checks the real data providers are reachable from your network
 python -m aq                    # dashboard + API at http://127.0.0.1:8000
-python -m pytest tests -q       # 54 tests, fully offline
+python -m pytest tests -q       # 56 tests, fully offline
 ```
 Requires Python ≥ 3.11 and outbound HTTPS to `api.exchange.coinbase.com`, `data-api.binance.vision` and
 `api.frankfurter.app` (plus `api.anthropic.com` when the LLM is enabled).
@@ -24,7 +24,9 @@ Requires Python ≥ 3.11 and outbound HTTPS to `api.exchange.coinbase.com`, `dat
 ## Dashboard ("Arena")
 The design follows the viral AI-trading-arena style: a dark terminal look, a scrolling live price ticker, and a big
 account value. A **return race chart** puts the AI fund against BTC buy-and-hold and an SMA trend bot from the same
-fixed start. Alongside it are a **leaderboard**, position cards with a stop↔target bar, **completed trades**, an
+fixed start. An **investment trend** chart shows fund value in £ by day since inception (Day 1 £10,000 → Day N),
+with daily high/low and milestone cards. It is built only from recorded equity snapshots, and missing days are
+shown as gaps rather than filled in. Alongside these are a **leaderboard**, position cards with a stop↔target bar, **completed trades**, an
 **Agent Chat** (Scout / Devil's Advocate / Risk Engine / Learning messages) and a **system log**. Every message,
 line and number is a stored backend record. The ticker scrolls real quotes, and the monitor countdown is the real
 scheduler time.
