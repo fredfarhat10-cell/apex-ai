@@ -1,13 +1,17 @@
 """HTTP API + static dashboard. Run: python -m aq (or uvicorn aq.api:app)."""
 from __future__ import annotations
 
+import base64
 import logging
+import secrets
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -47,7 +51,7 @@ def create_app(engine: Engine | None = None, start_scheduler: bool | None = None
                 with run_lock:
                     engine.monitor_cycle()
             sched.add_job(job, "interval", minutes=s.monitor_interval_minutes, id="monitor", max_instances=1,
-                          coalesce=True)
+                          coalesce=True, next_run_time=datetime.now(timezone.utc) + timedelta(seconds=60))
             sched.start()
             scheduler_holder["s"] = sched
             log(logger, logging.INFO, "scheduler_started", interval_min=s.monitor_interval_minutes)
@@ -55,8 +59,44 @@ def create_app(engine: Engine | None = None, start_scheduler: bool | None = None
         if "s" in scheduler_holder:
             scheduler_holder["s"].shutdown(wait=False)
 
-    app = FastAPI(title="Adaptive Quant", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Adaptive Quant", version="0.3.0", lifespan=lifespan)
     app.state.engine = engine
+
+    if s.cors_origins:  # e.g. a separately hosted frontend (Lovable/Vercel)
+        app.add_middleware(CORSMiddleware, allow_origins=list(s.cors_origins), allow_methods=["GET", "POST"],
+                           allow_headers=["Authorization", "Content-Type"], allow_credentials=True)
+
+    if s.dashboard_password:
+        @app.middleware("http")
+        async def basic_auth(request: Request, call_next):
+            if request.url.path == "/healthz" or request.method == "OPTIONS":
+                return await call_next(request)
+            if s.public_read_only and request.method in ("GET", "HEAD"):
+                return await call_next(request)
+            ok = False
+            header = request.headers.get("authorization", "")
+            if header.startswith("Basic "):
+                try:
+                    _, _, given = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+                    ok = secrets.compare_digest(given.encode(), s.dashboard_password.encode())
+                except (ValueError, UnicodeDecodeError):
+                    ok = False
+            if not ok:
+                return Response("Authentication required", status_code=401,
+                                headers={"WWW-Authenticate": 'Basic realm="Adaptive Quant", charset="UTF-8"'})
+            return await call_next(request)
+    else:
+        log(logger, logging.WARNING, "no_dashboard_password",
+            note="AQ_DASHBOARD_PASSWORD is not set: anyone who can reach this server can run investigations")
+
+    @app.get("/healthz")
+    def healthz():
+        """Liveness for the hosting platform: 200 while the process serves requests. Market-data outages are
+        reported, not treated as unhealthy (restarting would not fix an exchange outage)."""
+        last = engine.db.one("SELECT started_at, status FROM monitor_runs ORDER BY id DESC LIMIT 1")
+        sched = scheduler_holder.get("s")
+        return {"status": "ok", "scheduler_running": bool(sched and sched.running), "last_monitor_run": last,
+                "llm_calls_today": engine.llm.calls_today, "llm_daily_cap": s.max_llm_calls_per_day}
 
     @app.exception_handler(DataUnavailable)
     async def _du(_, exc):

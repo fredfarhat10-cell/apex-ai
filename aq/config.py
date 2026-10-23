@@ -56,7 +56,7 @@ class Settings:
     min_reward_risk: float = 1.5
     daily_loss_limit_pct: float = 2.0
     drawdown_warning_levels: tuple[float, ...] = (5.0, 10.0, 15.0)
-    allow_short: bool = True
+    allow_short: bool = False  # UK retail cannot access crypto derivatives (FCA, 2021): buy-only by default
     trade_on_monitor_verdict: bool = False
     min_position_gbp: float = 25.0
     max_data_staleness_minutes: int = 120
@@ -93,6 +93,12 @@ class Settings:
     llm_effort: str = "medium"
     llm_fallbacks: bool = True
     llm_enabled: bool = True
+    max_llm_calls_per_day: int = 60  # hard spend cap; beyond it agents fall back to rules:v1 (labelled)
+
+    # Deployment
+    dashboard_password: str = ""  # when set, HTTP Basic auth protects the app (user: admin)
+    public_read_only: bool = False  # with a password: anyone may view, only the password holder may act
+    cors_origins: tuple[str, ...] = ()
 
     extra: dict = field(default_factory=dict)
 
@@ -102,7 +108,8 @@ class Settings:
 
     def public_dict(self) -> dict:
         """Config safe to expose to the UI (never includes secrets)."""
-        d = {k: getattr(self, k) for k in self.__dataclass_fields__ if k != "extra"}
+        d = {k: getattr(self, k) for k in self.__dataclass_fields__ if k not in ("extra", "dashboard_password")}
+        d["dashboard_password_set"] = bool(self.dashboard_password)
         d["llm_available"] = self.llm_available
         return d
 
@@ -119,7 +126,7 @@ def get_settings() -> Settings:
         max_portfolio_exposure_pct=_f("AQ_MAX_PORTFOLIO_EXPOSURE_PCT", 30.0),
         min_reward_risk=_f("AQ_MIN_REWARD_RISK", 1.5),
         daily_loss_limit_pct=_f("AQ_DAILY_LOSS_LIMIT_PCT", 2.0),
-        allow_short=_b("AQ_ALLOW_SHORT", True),
+        allow_short=_b("AQ_ALLOW_SHORT", False),
         trade_on_monitor_verdict=_b("AQ_TRADE_ON_MONITOR_VERDICT", False),
         min_position_gbp=_f("AQ_MIN_POSITION_GBP", 25.0),
         max_data_staleness_minutes=_i("AQ_MAX_DATA_STALENESS_MINUTES", 120),
@@ -146,4 +153,8 @@ def get_settings() -> Settings:
         llm_effort=os.environ.get("AQ_LLM_EFFORT", "medium"),
         llm_fallbacks=_b("AQ_LLM_FALLBACKS", True),
         llm_enabled=_b("AQ_LLM_ENABLED", True),
+        max_llm_calls_per_day=_i("AQ_MAX_LLM_CALLS_PER_DAY", 60),
+        dashboard_password=os.environ.get("AQ_DASHBOARD_PASSWORD", ""),
+        public_read_only=_b("AQ_PUBLIC_READ_ONLY", False),
+        cors_origins=tuple(o.strip() for o in os.environ.get("AQ_CORS_ORIGINS", "").split(",") if o.strip()),
     )

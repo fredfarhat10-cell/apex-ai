@@ -56,8 +56,9 @@ def test_short_plan_and_disabled_shorts(settings):
     from dataclasses import replace
     plan = build_trade_plan("SHORT", 3000.0, 30.0, 2.0, 5.0, settings)
     assert plan.stop_price_usd > 3000 > plan.target_price_usd
-    assert _eval(settings, plan).approved
-    assert "short_allowed" in [c.name for c in _eval(replace(settings, allow_short=False), plan).failed]
+    assert not settings.allow_short  # UK-realistic default: buy-only
+    assert "short_allowed" in [c.name for c in _eval(settings, plan).failed]
+    assert _eval(replace(settings, allow_short=True), plan).approved
 
 
 def _bar(h, o, hi, lo, c):

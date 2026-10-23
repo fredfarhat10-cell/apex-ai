@@ -1,0 +1,27 @@
+# Render Blueprint: New > Blueprint > pick this repo/branch.
+# One instance only (the scheduler and SQLite ledger are single-writer). Disks need a paid instance.
+services:
+  - type: web
+    name: adaptive-quant
+    runtime: docker
+    region: frankfurt          # EU region: Binance public market data is not served to US IPs
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /healthz
+    disk:
+      name: aq-ledger
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false            # paste in the Render dashboard; never commit it
+      - key: AQ_DASHBOARD_PASSWORD
+        sync: false
+      - key: AQ_PUBLIC_READ_ONLY
+        value: "false"
+      - key: AQ_ALLOW_SHORT
+        value: "false"
+      - key: AQ_MAX_LLM_CALLS_PER_DAY
+        value: "60"
+      - key: AQ_FEE_BPS_PER_SIDE
+        value: "10"

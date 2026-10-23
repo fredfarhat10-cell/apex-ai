@@ -10,13 +10,24 @@ pass. It closes positions on real subsequent prices and writes a post-trade less
 
 (The repository also contains an unrelated, previously uploaded zip archive, which this project does not touch.)
 
+## Go live (real-time paper fund)
+Follow **[docs/GO_LIVE.md](docs/GO_LIVE.md)**, about 15 minutes. It covers:
+* a one-click deploy to Render (`render.yaml`) or Railway (`railway.json`) from the included `Dockerfile`, with a
+  persistent disk for the ledger and a `/healthz` health check;
+* `ANTHROPIC_API_KEY` for Claude;
+* `AQ_DASHBOARD_PASSWORD` to protect the dashboard;
+* UK-realistic defaults: buy-only, Binance-level fees, and a daily Claude spend cap;
+* `scripts/reset_fund.py` to start clean at £10,000.
+
+Business plan, content strategy and UK regulatory guardrails: **[docs/STRATEGY.md](docs/STRATEGY.md)**.
+
 ## Quick start
 ```bash
 pip install -r requirements.txt
 cp .env.example .env            # optional: add ANTHROPIC_API_KEY to enable LLM agents
 python scripts/smoke_live.py    # checks the real data providers are reachable from your network
 python -m aq                    # dashboard + API at http://127.0.0.1:8000
-python -m pytest tests -q       # 58 tests, fully offline
+python -m pytest tests -q       # 62 tests, fully offline
 ```
 Requires Python ≥ 3.11 and outbound HTTPS to `api.exchange.coinbase.com`, `data-api.binance.vision` and
 `api.frankfurter.app` (plus `api.anthropic.com` when the LLM is enabled).

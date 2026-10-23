@@ -6,5 +6,6 @@ import uvicorn
 from aq.api import create_app
 
 if __name__ == "__main__":
-    uvicorn.run(create_app(), host=os.environ.get("AQ_HOST", "127.0.0.1"), port=int(os.environ.get("AQ_PORT", "8000")),
-                log_config=None)
+    port = int(os.environ.get("AQ_PORT") or os.environ.get("PORT") or "8000")  # PORT: set by Render/Railway
+    uvicorn.run(create_app(), host=os.environ.get("AQ_HOST", "127.0.0.1"), port=port, log_config=None,
+                proxy_headers=True, forwarded_allow_ips="*")

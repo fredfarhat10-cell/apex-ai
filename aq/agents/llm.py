@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
+from datetime import datetime, timezone
 
 from aq.logging_setup import log
 
@@ -44,6 +46,9 @@ class LLMClient:
     def __init__(self, settings):
         self.settings = settings
         self._client = None
+        self._budget_lock = threading.Lock()
+        self._calls_day: str | None = None
+        self.calls_today = 0
         if settings.llm_available:
             import anthropic
             self._client = anthropic.Anthropic(max_retries=2, timeout=180.0)
@@ -56,10 +61,21 @@ class LLMClient:
     def engine_name(self) -> str:
         return f"llm:{self.settings.llm_model}"
 
+    def _spend_budget(self) -> None:
+        """Daily cap on LLM calls (UTC day, in-process counter). Over budget, callers degrade to rules:v1."""
+        today = datetime.now(timezone.utc).date().isoformat()
+        with self._budget_lock:
+            if self._calls_day != today:
+                self._calls_day, self.calls_today = today, 0
+            if self.calls_today >= self.settings.max_llm_calls_per_day:
+                raise LLMUnavailable(f"daily LLM budget reached ({self.settings.max_llm_calls_per_day} calls)")
+            self.calls_today += 1
+
     def structured(self, system: str, user: str, output_model, max_tokens: int = 16000):
         """Returns (parsed_output, usage_dict). Raises LLMUnavailable on any failure (caller degrades)."""
         if not self._client:
             raise LLMUnavailable("ANTHROPIC_API_KEY not configured")
+        self._spend_budget()
         import anthropic
         kwargs = dict(
             model=self.settings.llm_model, max_tokens=max_tokens,
