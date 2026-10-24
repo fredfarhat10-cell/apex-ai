@@ -6,6 +6,7 @@
 <title>Adaptive Quant</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/vendor/lenis-1.3.26.css">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="theme-bn">
@@ -74,7 +75,7 @@
         </div>
         <div class="panel activity">
           <div class="panel-title"><span>Agent Activity</span><span class="muted" id="act-asset"></span></div>
-          <div id="activity" class="act-list"></div>
+          <div id="activity" class="act-list" data-lenis-prevent></div>
         </div>
       </div>
     </div>
@@ -170,6 +171,8 @@
     <div class="card"><div class="card-head"><span>Monitor runs</span></div><div id="monitor-runs"></div></div></div></section>
 </main>
 <footer class="foot">Adaptive Quant · paper trading research · see WHITEPAPER.md · past performance does not establish future performance</footer>
+<script src="/static/vendor/gsap-3.15.0.min.js"></script>
+<script src="/static/vendor/lenis-1.3.26.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -34,8 +34,48 @@ function fval(v) {
 const COIN = { BTC: "#f7931a", ETH: "#627eea", SOL: "#9945ff", BNB: "#f3ba2f", XRP: "#23292f", DOGE: "#c2a633" };
 const coinIcon = (a) => `<i style="background:${COIN[a] || "#58667e"}">${esc(a.slice(0, 4))}</i>`;
 
+// ---- motion (GSAP + Lenis) --------------------------------------------------------
+// Motion only ever shows real values: tweens run between two real numbers, nothing counts up from zero.
+// Everything is disabled under prefers-reduced-motion, and degrades to static rendering if a library is missing.
+const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const G = !REDUCED && typeof window.gsap !== "undefined" ? window.gsap : null;
+const FX = {
+  enter(root) { // staggered entrance for the panels of a freshly shown view
+    if (!G || !root) return;
+    const els = root.querySelectorAll(".panel, .pf-card, .pf-stat, .card, .pairbar, .pf-head");
+    if (els.length) G.fromTo(els, { y: 14, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.45, ease: "power2.out", stagger: 0.035, clearProps: "transform,opacity,visibility" });
+  },
+  flash(el, up) { // tick colour flash on a real price change
+    if (!G || !el) return;
+    G.fromTo(el, { backgroundColor: up ? "rgba(14,203,129,0.28)" : "rgba(246,70,93,0.28)" }, { backgroundColor: "rgba(0,0,0,0)", duration: 0.9, ease: "power1.out", clearProps: "backgroundColor" });
+  },
+  number(el, from, to, fmt) { // tween between two real values
+    if (!el) return;
+    if (!G || from == null || from === to) { el.textContent = fmt(to); return; }
+    const o = { v: from };
+    G.to(o, { v: to, duration: 0.7, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); }, onComplete: () => { el.textContent = fmt(to); } });
+  },
+  draw(path, duration = 1.1) { // line chart draw-in
+    if (!G || !path || !path.getTotalLength) return;
+    const len = path.getTotalLength();
+    G.fromTo(path, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration, ease: "power2.inOut", clearProps: "strokeDasharray,strokeDashoffset" });
+  },
+  reveal(els, step = 0.35) { // sequential reveal: Scout -> Devil's Advocate -> Risk Engine
+    if (!G || !els || !els.length) return;
+    G.fromTo(els, { y: 10, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.4, ease: "power2.out", stagger: step, clearProps: "transform,opacity,visibility" });
+  },
+};
+let LENIS = null;
+function setSmoothScroll(on) {
+  if (REDUCED || typeof window.Lenis === "undefined") return;
+  if (on && !LENIS) LENIS = new window.Lenis({ autoRaf: true, lerp: 0.12 });
+  if (!on && LENIS) { LENIS.destroy(); LENIS = null; }
+}
+
 // ---- routing / theme -----------------------------------------------------------
 const TABS = ["trade", "portfolio", "research", "lessons", "system"];
+let LAST_VIEW = null, ENTER_PENDING = false;
+function enterOnce(view) { if (ENTER_PENDING) { ENTER_PENDING = false; FX.enter($("view-" + view)); } }
 let curAsset = "BTC", curIv = "1h";
 function route() {
   const [name, arg] = (location.hash.slice(1) || "trade").split("/");
@@ -46,6 +86,8 @@ function route() {
   document.querySelectorAll("#links a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
   if (view === "trade" && arg) curAsset = arg.toUpperCase();
   if (view !== "trade") stopStreams();
+  setSmoothScroll(view !== "trade");
+  if (view !== LAST_VIEW) { LAST_VIEW = view; window.scrollTo(0, 0); ENTER_PENDING = true; }
   ({ trade: loadTrade, portfolio: loadPortfolio, research: loadResearch, lessons: loadLessons, system: loadSystem,
      position: () => loadPosition(arg), investigation: () => loadInvestigationDetail(arg) })[view]();
 }
@@ -81,8 +123,11 @@ function stopStreams() {
   for (const k of ["ws", "mws"]) { if (LIVE[k]) { LIVE[k].onclose = null; try { LIVE[k].close(); } catch (e) { /* already closed */ } LIVE[k] = null; } }
   LIVE.key = ""; LIVE.mkey = "";
 }
+let PREV_PX = null;
 function onTicker(t) {
   LIVE.lastTick = t.time || Date.now();
+  if (PREV_PX != null && t.price !== PREV_PX) FX.flash($("px-last"), t.price > PREV_PX);
+  PREV_PX = t.price;
   setChange(t.chg, t.price);
   if (t.high != null) $("px-high").textContent = fmtPx(t.high);
   if (t.low != null) $("px-low").textContent = fmtPx(t.low);
@@ -140,6 +185,7 @@ function startStream() {
     LIVE.ws.onclose = () => { setLive(false); LIVE.key = ""; };
   } catch (e) { setLive(false); }
 }
+const MK_PREV = {};
 function startMarketsStream(assets) {
   const key = assets.join(",");
   if (!assets.length || (key === LIVE.mkey && LIVE.mws && LIVE.mws.readyState <= 1)) return;
@@ -150,6 +196,9 @@ function startMarketsStream(assets) {
     LIVE.mws.onmessage = (ev) => {
       const { data } = JSON.parse(ev.data), a = data.s.replace(/USDT$/, "");
       if (!$("mk-px-" + a)) return;
+      const prev = MK_PREV[a];
+      if (prev != null && +data.c !== prev) FX.flash($("mk-px-" + a).parentElement, +data.c > prev);
+      MK_PREV[a] = +data.c;
       $("mk-px-" + a).textContent = fmtPx(+data.c);
       $("mk-chg-" + a).innerHTML = pct((+data.c / +data.o - 1) * 100);
     };
@@ -173,6 +222,7 @@ async function loadTrade() {
   }
   $("run-btn").disabled = !active.length;
   await Promise.all([loadMarket(), loadOrderBook(), loadMarkets(), loadBottom(), loadActivity()]);
+  enterOnce("trade");
 }
 
 async function loadMarket() {
@@ -184,6 +234,7 @@ async function loadMarket() {
     return;
   }
   const s = m.stats, last = m.candles[m.candles.length - 1];
+  if (!LAST_M || LAST_M.asset !== m.asset) PREV_PX = null;
   LAST_M = m;
   $("pairbar").innerHTML = `<div class="pair">${coinIcon(curAsset).replace("<i ", '<i class="pi" ')}<div><div class="sym">${esc(curAsset)}/USD</div><div class="src">${esc(s.source)} · paper</div></div></div>
     <div class="lastpx" id="px-last">${fmtPx(s.price_usd)}<span class="usd">$${fmtPx(s.price_usd)}</span></div>
@@ -358,6 +409,7 @@ $("run-btn").addEventListener("click", async () => {
     const inv = await api("/api/investigations", { method: "POST", body: JSON.stringify({ asset: curAsset }) });
     $("run-status").innerHTML = `Done: ${badge(inv.final_decision)}`;
     showInvestigationSummary(inv);
+    FX.reveal($("inv-result").querySelectorAll(".res-head, .res-line, .res-step"));
     OVERVIEW = null;
     loadTrade();
   } catch (e) { $("run-status").innerHTML = `<span class="down">Failed: ${esc(e.message)}</span>`; }
@@ -398,13 +450,15 @@ function invTable(list) {
 }
 
 // ============================ PORTFOLIO (CoinMarketCap) ============================
-let PF_SERIES = null, PF_RANGE = 30;
+let PF_SERIES = null, PF_RANGE = 30, PF_PREV_BAL = null, PF_DRAW = true;
 async function loadPortfolio() {
   let pf, series, trend;
   try { [pf, series, trend] = await Promise.all([api("/api/portfolio"), api("/api/equity-series"), api("/api/investment-trend")]); }
   catch (e) { $("pf-balance").innerHTML = `<span class="down">Unavailable</span>`; $("pf-change").textContent = e.message; return; }
   PF_SERIES = series;
-  $("pf-balance").textContent = "£" + pf.balance_gbp.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtBal = (v) => "£" + v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  FX.number($("pf-balance"), PF_PREV_BAL, pf.balance_gbp, fmtBal);
+  PF_PREV_BAL = pf.balance_gbp;
   const chip = (v) => v == null ? `<span class="chip flat">24h: not enough history</span>`
     : `<span class="chip ${v >= 0 ? "up" : "down"}">${v >= 0 ? "▲" : "▼"} ${Math.abs(v).toFixed(2)}% (24h)</span>`;
   $("pf-change").innerHTML = `${chip(pf.change_24h_pct)} ${pf.change_24h_gbp == null ? "" : signedGbp(pf.change_24h_gbp)}
@@ -433,6 +487,7 @@ async function loadPortfolio() {
   $("trend-meta").innerHTML = `Day ${trend.days_elapsed} · ${gbp(trend.starting_capital_gbp, 0)} invested → ${gbp(last.value_gbp)} ${pct(last.return_pct)}`;
   $("pf-days").innerHTML = pts.map((p) => `<div class="pf-day"><div class="d">Day ${p.day} · ${new Date(p.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</div>
     <div class="v">${gbp(p.value_gbp)}</div><div class="c">${signedGbp(p.change_from_start_gbp)} ${pct(p.return_pct)}</div></div>`).join("");
+  enterOnce("portfolio");
   $("trend-note").textContent = trend.note + (trend.missing_days.length ? ` Days with no recording: ${trend.missing_days.join(", ")}.` : "") + " Paper performance only.";
 
   const rows = pf.holdings.map((h, i) => `<tr class="click" onclick="location.hash='position/${h.trade_id}'"><td>${i + 1}</td>
@@ -481,7 +536,8 @@ function drawHistory() {
   for (let i = 0; i <= 4; i++) { const t = x0 + (x1 - x0) * i / 4; g += `<text x="${X(t)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#58667e">${new Date(t).toLocaleString("en-GB", PF_RANGE === 1 ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short" })}</text>`; }
   const d = pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" id="hsvg"><defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".25"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
-    ${g}<path d="${d}L${X(x1)},${H - B}L${X(x0)},${H - B}Z" fill="url(#hg)"/><path d="${d}" fill="none" stroke="${col}" stroke-width="2"/><g id="htip"></g></svg>`;
+    ${g}<path d="${d}L${X(x1)},${H - B}L${X(x0)},${H - B}Z" fill="url(#hg)"/><path id="hline" d="${d}" fill="none" stroke="${col}" stroke-width="2"/><g id="htip"></g></svg>`;
+  if (PF_DRAW) { PF_DRAW = false; FX.draw($("hline")); }
   const svg = $("hsvg");
   svg.onmousemove = (e) => {
     const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width;
@@ -496,6 +552,7 @@ function drawHistory() {
 }
 document.querySelectorAll("#range button").forEach((b) => b.onclick = () => {
   PF_RANGE = +b.dataset.r;
+  PF_DRAW = true;
   document.querySelectorAll("#range button").forEach((x) => x.classList.toggle("on", x === b));
   if (PF_SERIES) drawHistory();
 });
@@ -526,6 +583,7 @@ function drawAllocation(alloc) {
 async function loadResearch() {
   const list = await api("/api/investigations?limit=60");
   $("investigation-list").innerHTML = list.length ? invTable(list) : empty("No investigations yet. Use Run Investigation on the Trade page.");
+  enterOnce("research");
 }
 function conditions(list) {
   if (!list || !list.length) return '<span class="muted">None stated</span>';
@@ -586,7 +644,10 @@ function renderInvestigation(inv) {
   </div></div>`;
 }
 async function loadInvestigationDetail(id) {
-  try { $("investigation-detail").innerHTML = `<a class="back" href="#research">← Investigations</a>` + renderInvestigation(await api(`/api/investigations/${id}`)); }
+  try {
+    $("investigation-detail").innerHTML = `<a class="back" href="#research">← Investigations</a>` + renderInvestigation(await api(`/api/investigations/${id}`));
+    if (ENTER_PENDING) { ENTER_PENDING = false; FX.reveal($("investigation-detail").querySelectorAll(".step"), 0.15); }
+  }
   catch (e) { $("investigation-detail").innerHTML = empty(e.message); }
 }
 
@@ -666,6 +727,7 @@ async function loadLessons() {
   $("lessons").innerHTML = ls.map((l) => `<div class="msg"><div class="avatar">LN</div><div>
     <div>${badge(l.validation_status)} <a href="#position/${l.trade_id}">${esc(l.asset)} ${esc(l.direction)}</a> · ${esc(l.failure_category || "win")} <span class="muted">${when(l.created_at)}</span></div>
     <div>${esc(l.observed_error)}<br><b>${esc(l.lesson)}</b><br><span class="muted">${esc(l.timing_assessment)}</span></div></div></div>`).join("");
+  enterOnce("lessons");
 }
 
 async function loadSystem() {
@@ -690,6 +752,7 @@ async function loadSystem() {
     ${runs.map((r) => `<tr><td>${when(r.started_at)}</td><td>${esc(r.status)}</td><td>${esc(Object.keys(r.triggers_json || {}).join(", ") || "none")}</td>
     <td>${(r.investigations_json || []).map((i) => `<a href="#investigation/${i.id}">${esc(i.asset)}: ${esc(i.decision)}</a>`).join(", ") || "none"}</td>
     <td>${(r.positions_closed_json || []).length}</td><td class="muted">${esc((r.errors_json || []).join("; ").slice(0, 200))}</td></tr>`).join("")}</table></div>` : empty("No monitor runs yet.");
+  enterOnce("system");
 }
 $("monitor-btn").addEventListener("click", async () => {
   $("monitor-btn").disabled = true;
